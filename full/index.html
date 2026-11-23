@@ -159,6 +159,79 @@
       cursor: pointer;
     }
     .tb-btn:hover { border-color: #4a6078; background: #243041; }
+    .tb-btn:disabled { opacity: 0.55; cursor: wait; }
+    /* CTA principal : Tout déplier */
+    #btnExpandAll {
+      order: -1;
+      background: linear-gradient(180deg, #3d8fd4 0%, #2a6fad 100%);
+      color: #fff;
+      border: 1px solid #5ba3e0;
+      border-radius: 8px;
+      padding: 0.45rem 0.95rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      box-shadow: 0 0 0 1px #1a3a55, 0 4px 14px rgba(59, 143, 212, 0.35);
+    }
+    #btnExpandAll:hover:not(:disabled) {
+      background: linear-gradient(180deg, #4a9de0 0%, #3480c4 100%);
+      border-color: #7ec0f5;
+      box-shadow: 0 0 0 1px #2a5080, 0 6px 18px rgba(59, 143, 212, 0.5);
+    }
+    #btnExpandAll.loading {
+      background: linear-gradient(180deg, #2a5a80 0%, #1e4060 100%);
+      pointer-events: none;
+    }
+    #loadOverlay {
+      display: none;
+      position: absolute; inset: 0; z-index: 20;
+      background: rgba(8, 12, 18, 0.78);
+      backdrop-filter: blur(4px);
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 0.85rem;
+      padding: 1.5rem;
+      text-align: center;
+    }
+    #loadOverlay.visible { display: flex; }
+    #loadOverlay .lo-card {
+      background: #15202b;
+      border: 1px solid #3d5470;
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      min-width: min(420px, 92vw);
+      box-shadow: 0 12px 40px #000a;
+    }
+    #loadOverlay .lo-title {
+      font-size: 1.05rem; font-weight: 700; color: #e7eef6;
+      margin: 0 0 0.35rem;
+    }
+    #loadOverlay .lo-msg {
+      font-size: 0.85rem; color: #9eb0c2; margin: 0 0 0.9rem;
+      font-family: var(--mono);
+    }
+    #loadOverlay .lo-bar {
+      height: 10px; border-radius: 999px;
+      background: #0c1015; border: 1px solid #2a3542;
+      overflow: hidden;
+    }
+    #loadOverlay .lo-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, #2a6fad, #6ec6ff);
+      border-radius: 999px;
+      transition: width 0.15s ease-out;
+    }
+    #loadOverlay .lo-pct {
+      margin-top: 0.55rem;
+      font-size: 1.35rem; font-weight: 700; color: #6ec6ff;
+      font-family: var(--mono);
+    }
+    #loadOverlay .lo-spin {
+      width: 28px; height: 28px; margin: 0 auto 0.75rem;
+      border: 3px solid #2a3542; border-top-color: #6ec6ff;
+      border-radius: 50%;
+      animation: lo-spin 0.75s linear infinite;
+    }
+    @keyframes lo-spin { to { transform: rotate(360deg); } }
     #canvasWrap { position: relative; min-height: 0; overflow: hidden; }
     canvas { display: block; width: 100%; height: 100%; cursor: grab; }
     canvas.dragging { cursor: grabbing; }
@@ -375,13 +448,14 @@
 
   <section id="main">
     <div id="toolbar">
+      <button type="button" class="tb-btn" id="btnExpandAll" title="Déplier tous les nœuds de tous les arbres filtrés">Tout déplier</button>
+      <span class="sep"></span>
       <span id="treeTitle">Sélectionnez un arbre</span>
       <span class="sep"></span>
       <span id="treeStats"></span>
       <span class="sep"></span>
       <button type="button" class="tb-btn" id="btnCollapse" title="Ne garder que la racine et ses enfants directs">Replier</button>
       <button type="button" class="tb-btn" id="btnExpand1" title="Ouvrir un niveau de plus">+1 niveau</button>
-      <button type="button" class="tb-btn" id="btnExpandAll" title="Déplier tous les nœuds de tous les arbres filtrés">Tout déplier</button>
       <span class="sep"></span>
       <span>Toutes les originales · pastille <strong>+N</strong> = déployer la cascade · ↓ temps</span>
     </div>
@@ -390,6 +464,15 @@
       <div id="avatarLayer" aria-hidden="true"></div>
       <div id="hoverTip"></div>
       <div id="status"></div>
+      <div id="loadOverlay" aria-live="polite" aria-busy="false">
+        <div class="lo-card">
+          <div class="lo-spin" aria-hidden="true"></div>
+          <p class="lo-title" id="loTitle">Dépliage en cours</p>
+          <p class="lo-msg" id="loMsg">Préparation…</p>
+          <div class="lo-bar"><div class="lo-fill" id="loFill"></div></div>
+          <div class="lo-pct" id="loPct">0&nbsp;%</div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -452,6 +535,12 @@
     wrap: document.getElementById("canvasWrap"),
     cv: document.getElementById("cv"),
     avatarLayer: document.getElementById("avatarLayer"),
+    loadOverlay: document.getElementById("loadOverlay"),
+    loTitle: document.getElementById("loTitle"),
+    loMsg: document.getElementById("loMsg"),
+    loFill: document.getElementById("loFill"),
+    loPct: document.getElementById("loPct"),
+    btnExpandAll: document.getElementById("btnExpandAll"),
   };
   const ctx = el.cv.getContext("2d");
 
@@ -580,20 +669,47 @@
     }
   }
 
+  function showLoadOverlay(title, msg) {
+    if (!el.loadOverlay) return;
+    el.loadOverlay.classList.add("visible");
+    el.loadOverlay.setAttribute("aria-busy", "true");
+    if (el.loTitle) el.loTitle.textContent = title || "Chargement";
+    if (el.loMsg) el.loMsg.textContent = msg || "";
+    setLoadProgress(0, msg);
+  }
+
+  function setLoadProgress(frac, msg) {
+    const p = Math.max(0, Math.min(1, frac || 0));
+    if (el.loFill) el.loFill.style.width = (p * 100).toFixed(1) + "%";
+    if (el.loPct) el.loPct.innerHTML = Math.round(p * 100) + "&nbsp;%";
+    if (msg != null && el.loMsg) el.loMsg.textContent = msg;
+    if (el.status && msg) el.status.textContent = msg;
+  }
+
+  function hideLoadOverlay() {
+    if (!el.loadOverlay) return;
+    el.loadOverlay.classList.remove("visible");
+    el.loadOverlay.setAttribute("aria-busy", "false");
+  }
+
   /** Charge un lot d'arbres (concurrence limitée) — précharge / Tout déplier / +1 niveau. */
   async function ensureTreesMany(ids, label, opts = {}) {
     const uniq = [...new Set(ids.filter(Boolean))];
     const pending = uniq.filter((id) => !FOREST.trees[id]);
-    if (!pending.length) return;
+    if (!pending.length) {
+      if (opts.onProgress) opts.onProgress(1, 0, 0);
+      return;
+    }
     const CONC = opts.concurrency || 32;
     let done = 0;
+    const total = pending.length;
     for (let i = 0; i < pending.length; i += CONC) {
       const batch = pending.slice(i, i + CONC);
       await Promise.all(batch.map((id) => ensureTree(id, { quiet: true })));
       done += batch.length;
-      if (!opts.silent) {
-        el.status.textContent = `${label || "Chargement"} ${done.toLocaleString("fr-FR")}/${pending.length.toLocaleString("fr-FR")}…`;
-      }
+      const msg = `${label || "Chargement"} ${done.toLocaleString("fr-FR")} / ${total.toLocaleString("fr-FR")} arbres`;
+      if (!opts.silent) el.status.textContent = msg;
+      if (opts.onProgress) opts.onProgress(done / total, done, total, msg);
       await new Promise((r) => setTimeout(r, 0));
     }
   }
@@ -1271,22 +1387,60 @@
   }
 
   async function expandAll() {
+    if (el.btnExpandAll?.disabled) return;
     const roots = activeRootIds();
-    el.status.textContent = `Dépliage complet · 0/${fmtNum(roots.length)}…`;
-    await ensureTreesMany(roots, "Dépliage · chargement");
-    for (const rootId of roots) {
-      const stack = [rootId];
-      while (stack.length) {
-        const id = stack.pop();
-        expanded.add(id);
-        const kids = filteredChildren(id);
-        childCap.set(id, Math.max(kids.length, 1));
-        for (const c of kids) stack.push(c);
+    const n = roots.length;
+    if (el.btnExpandAll) {
+      el.btnExpandAll.disabled = true;
+      el.btnExpandAll.classList.add("loading");
+      el.btnExpandAll.textContent = "Dépliage…";
+    }
+    showLoadOverlay(
+      "Tout déplier",
+      `Chargement de ${fmtNum(n)} arbre(s)…`
+    );
+    try {
+      await ensureTreesMany(roots, "Chargement des cascades", {
+        concurrency: 40,
+        onProgress: (frac, done, total, msg) => {
+          setLoadProgress(
+            frac * 0.85,
+            msg || `Chargement ${fmtNum(done)} / ${fmtNum(total)}`
+          );
+        },
+      });
+      setLoadProgress(0.88, `Ouverture des nœuds (${fmtNum(n)} arbres)…`);
+      let i = 0;
+      for (const rootId of roots) {
+        const stack = [rootId];
+        while (stack.length) {
+          const id = stack.pop();
+          expanded.add(id);
+          const kids = filteredChildren(id);
+          childCap.set(id, Math.max(kids.length, 1));
+          for (const c of kids) stack.push(c);
+        }
+        i += 1;
+        if (i % 80 === 0 || i === n) {
+          setLoadProgress(
+            0.88 + 0.12 * (i / Math.max(n, 1)),
+            `Dépliage structure ${fmtNum(i)} / ${fmtNum(n)}…`
+          );
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+      setLoadProgress(1, "Mise en page…");
+      relayoutKeepView();
+      draw();
+      el.status.textContent = `Déplié · ${fmtNum(n)} arbres · ${fmtNum(visibleNodeIds().size)} nœuds visibles`;
+    } finally {
+      hideLoadOverlay();
+      if (el.btnExpandAll) {
+        el.btnExpandAll.disabled = false;
+        el.btnExpandAll.classList.remove("loading");
+        el.btnExpandAll.textContent = "Tout déplier";
       }
     }
-    el.status.textContent = `Déplié · ${fmtNum(roots.length)} arbres`;
-    relayoutKeepView();
-    draw();
   }
 
   function collapseToRoot() {
@@ -1783,7 +1937,7 @@
 
   document.getElementById("btnCollapse").addEventListener("click", collapseToRoot);
   document.getElementById("btnExpand1").addEventListener("click", expandOneLevel);
-  document.getElementById("btnExpandAll").addEventListener("click", expandAll);
+  el.btnExpandAll.addEventListener("click", expandAll);
 
   window.addEventListener("resize", () => {
     resize();
