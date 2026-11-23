@@ -260,33 +260,72 @@
       z-index: 3;
     }
 
-    #detail .body { flex: 1; overflow: auto; padding: 0.85rem; }
+    #detail .body { flex: 1; overflow: auto; padding: 0.75rem; }
     #detail h2 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 600; }
     #detail .empty { color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
-    .kv {
-      display: grid; grid-template-columns: 7.5rem 1fr;
-      gap: 0.25rem 0.5rem; font-size: 0.78rem; margin-bottom: 0.85rem;
-    }
-    .kv dt { color: var(--muted); }
-    .kv dd { margin: 0; font-family: var(--mono); word-break: break-all; }
     .badge {
       display: inline-block; padding: 0.1rem 0.4rem; border-radius: 999px;
-      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      font-size: 0.65rem; font-weight: 600; text-transform: uppercase;
     }
     .badge.reply { background: #1e3a55; color: #9ec9ef; }
     .badge.quote { background: #4a3218; color: #f0c48a; }
     .badge.ancre { background: #243a1c; color: #b7e39a; }
-    .post-text {
-      white-space: pre-wrap; font-size: 0.86rem; line-height: 1.45;
-      background: var(--panel2); border: 1px solid var(--border);
-      border-radius: 8px; padding: 0.7rem; margin: 0.5rem 0 0.85rem;
-    }
-    .hint {
-      font-size: 0.75rem; color: var(--muted); line-height: 1.4;
-      border-top: 1px solid var(--border); padding-top: 0.7rem; margin-top: 0.5rem;
-    }
-    .detail-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.7rem; }
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.65rem; }
     a { color: var(--accent); }
+    .dsec {
+      margin: 0 0 0.85rem;
+    }
+    .dsec-label {
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--muted);
+      margin: 0 0 0.4rem;
+    }
+    .dtweet {
+      display: grid;
+      grid-template-columns: 40px 1fr;
+      gap: 0.55rem;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.55rem 0.65rem;
+      cursor: pointer;
+      text-align: left;
+      width: 100%;
+      color: inherit; font: inherit;
+      transition: border-color .12s, background .12s;
+    }
+    .dtweet:hover { border-color: #4a6078; background: #1c2836; }
+    .dtweet.sel { border-color: #6ec6ff; box-shadow: 0 0 0 1px #6ec6ff44; }
+    .dtweet.root-hl { border-color: #6a9a55; }
+    .dtweet.parent-hl { border-color: #c9a14a; }
+    .dtweet .dav {
+      width: 40px; height: 40px; border-radius: 50%;
+      object-fit: cover; background: #243041;
+      border: 2px solid #2a3542;
+    }
+    .dtweet.ancre .dav { border-color: var(--ancre); }
+    .dtweet.reply .dav { border-color: var(--reply); }
+    .dtweet.quote .dav { border-color: var(--quote); }
+    .dtweet .dmeta {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem;
+      margin-bottom: 0.2rem;
+    }
+    .dtweet .dauthor { color: var(--accent); font-weight: 650; font-size: 0.82rem; }
+    .dtweet .ddate { color: var(--muted); font-size: 0.68rem; font-family: var(--mono); }
+    .dtweet .dtext {
+      font-size: 0.8rem; line-height: 1.4; color: #dbe4ee;
+      display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;
+      overflow: hidden; white-space: pre-wrap; margin: 0.15rem 0 0.35rem;
+    }
+    .dtweet .deng {
+      font-size: 0.7rem; color: var(--muted); font-family: var(--mono);
+      display: flex; flex-wrap: wrap; gap: 0.55rem;
+    }
+    .dtweet .deng b { color: #c5d0dc; font-weight: 600; }
+    .dchildren { display: flex; flex-direction: column; gap: 0.45rem; }
+    .dmore {
+      font-size: 0.72rem; color: var(--muted); margin: 0.25rem 0 0;
+    }
     #hoverTip {
       position: absolute; pointer-events: none; z-index: 5;
       display: none;
@@ -1720,15 +1759,66 @@
     ctx.restore();
   }
 
-  function showDetail(n) {
+  function engagementOf(node) {
+    if (!node) return 0;
+    return (node.rt || 0) * 3 + (node.likes || 0) + (node.replies || 0) + (node.quotes || 0);
+  }
+
+  function detailTweetCard(node, { role = "", selected = false } = {}) {
+    if (!node) return "";
+    const rel = node.relation || "reply";
+    const cls = ["dtweet", rel];
+    if (selected) cls.push("sel");
+    if (role === "root") cls.push("root-hl");
+    if (role === "parent") cls.push("parent-hl");
+    const url = `https://x.com/i/web/status/${node.id}`;
+    return `
+      <button type="button" class="${cls.join(" ")}" data-focus-id="${node.id}">
+        <img class="dav" src="${avatarImgUrl(node.author)}" alt=""
+          loading="lazy" referrerpolicy="no-referrer"
+          onerror="this.onerror=null;this.src='https://ui-avatars.com/api/?name=${encodeURIComponent((node.author || '?')[0] || '?')}&background=2a3542&color=e7eef6&size=80&bold=true'" />
+        <div>
+          <div class="dmeta">
+            <span class="dauthor">@${escapeHtml(node.author || "?")}</span>
+            <span class="badge ${rel}">${rel}</span>
+            <span class="ddate">${fmtDate(node.iso)}</span>
+          </div>
+          <div class="dtext">${escapeHtml(node.text || "")}</div>
+          <div class="deng">
+            <span>RT <b>${fmtNum(node.rt)}</b></span>
+            <span>❤ <b>${fmtNum(node.likes)}</b></span>
+            <span>↩ <b>${fmtNum(node.replies)}</b></span>
+            <span>❝ <b>${fmtNum(node.quotes)}</b></span>
+            <a href="${url}" target="_blank" rel="noopener" data-stop="1">Ouvrir</a>
+          </div>
+        </div>
+      </button>`;
+  }
+
+  async function showDetail(n) {
     if (!n) return;
     selectedId = n.id;
-    el.detailTitle.textContent = `@${n.author || "?"} · ${n.relation}`;
-    const badge = `<span class="badge ${n.relation}">${n.relation}</span>`;
-    const url = `https://x.com/i/web/status/${n.id}`;
-    const kids = filteredChildren(n.id).length;
-    const hidden = hiddenDescendantCount(n.id);
+    const rid = rootOf[n.id] || n.id;
+    currentId = rid;
+    el.detailTitle.textContent = `@${n.author || "?"} · sélection`;
+    el.detailBody.innerHTML = `<p class="empty">Chargement du contexte…</p>`;
+    draw();
+
+    await ensureTree(rid);
+    n = byId[n.id] || n;
+    const root = byId[rid] || n;
+    const parent = parentOf[n.id] ? byId[parentOf[n.id]] : null;
+    const childIds = filteredChildren(n.id);
+    const childNodes = childIds
+      .map((id) => byId[id])
+      .filter(Boolean)
+      .sort((a, b) => engagementOf(b) - engagementOf(a) || (b.rt || 0) - (a.rt || 0));
+    const topKids = childNodes.slice(0, 10);
+    const rest = Math.max(0, childNodes.length - topKids.length);
+
+    const kids = childIds.length;
     const more = hiddenSiblingCount(n.id);
+    const hidden = hiddenDescendantCount(n.id);
     const unloadedDeep = n.relation === "ancre" && !FOREST.trees[n.id] && (n.subtree_size || 1) > 1
       ? (n.subtree_size - 1) : 0;
     const canToggle = kids > 0 || hidden > 0 || unloadedDeep > 0 || expanded.has(n.id);
@@ -1739,30 +1829,35 @@
     } else if (more > 0) toggleLabel = `Afficher +${Math.min(CHILD_CAP_STEP, more)} enfants`;
     else if (expanded.has(n.id)) toggleLabel = "Replier les enfants (1er niveau)";
     const canExpandDeep = kids > 0 || hidden > 0 || unloadedDeep > 0;
+
+    const parentBlock = parent
+      ? detailTweetCard(parent, { role: "parent", selected: parent.id === selectedId })
+      : `<p class="empty" style="margin:0">Pas de parent — c’est l’originale (ancre).</p>`;
+
     el.detailBody.innerHTML = `
-      ${badge}
       <div class="detail-actions">
         ${canToggle && toggleLabel ? `<button type="button" class="tb-btn" id="btnToggleNode">${toggleLabel}</button>` : ""}
-        ${canExpandDeep ? `<button type="button" class="tb-btn" id="btnExpandDeep" title="Ouvre tout le sous-arbre, tous degrés">Déplier tous les enfants</button>` : ""}
-        <a href="${url}" target="_blank" rel="noopener">Ouvrir sur X</a>
+        ${canExpandDeep ? `<button type="button" class="tb-btn" id="btnExpandDeep" title="Ouvre tout le sous-arbre">Déplier tous les enfants</button>` : ""}
+        <a href="https://x.com/i/web/status/${n.id}" target="_blank" rel="noopener">Sélection sur X</a>
       </div>
-      <div class="post-text">${escapeHtml(n.text || "")}</div>
-      <dl class="kv">
-        <dt>Date</dt><dd>${fmtDate(n.iso)}</dd>
-        <dt>Retweets</dt><dd>${fmtNum(n.rt)}</dd>
-        <dt>Réponses / quotes</dt><dd>${fmtNum(n.replies)} / ${fmtNum(n.quotes)}</dd>
-        <dt>Likes</dt><dd>${fmtNum(n.likes)}</dd>
-        <dt>Profondeur</dt><dd>${n.depth}</dd>
-        <dt>Sous-arbre ΣRT</dt><dd>${fmtNum(n.subtree_rt)} (${fmtNum(n.subtree_size)} nœuds)</dd>
-        <dt>Délai depuis racine</dt><dd>${n.dt_root_h} h</dd>
-        <dt>Dans corpus à terme</dt><dd>${n.in_corpus ? "oui" : "non"}</dd>
-        <dt>Enfants filtrés</dt><dd>${kids}${hidden ? ` · ${hidden} cachés` : ""}</dd>
-        <dt>Id</dt><dd>${n.id}</dd>
-      </dl>
-      <p class="hint">
-        Haut = plus ancien, bas = plus récent. Les branches s’écartent horizontalement.
-        Cliquez une pastille <strong>+N</strong> pour déployer sans tout ouvrir d’un coup.
-      </p>`;
+      <section class="dsec">
+        <div class="dsec-label">Tweet original (ancre)</div>
+        ${detailTweetCard(root, { role: "root", selected: root.id === selectedId })}
+      </section>
+      <section class="dsec">
+        <div class="dsec-label">Tweet parent</div>
+        ${parentBlock}
+      </section>
+      <section class="dsec">
+        <div class="dsec-label">Enfants · top 10 engagement (${fmtNum(childNodes.length)})</div>
+        <div class="dchildren">
+          ${topKids.length
+            ? topKids.map((c) => detailTweetCard(c, { selected: c.id === selectedId })).join("")
+            : `<p class="empty" style="margin:0">Aucun enfant (reply/quote) sous ce nœud.</p>`}
+        </div>
+        ${rest > 0 ? `<p class="dmore">+ ${fmtNum(rest)} autres enfants non listés</p>` : ""}
+      </section>`;
+
     const btn = document.getElementById("btnToggleNode");
     if (btn) btn.addEventListener("click", () => {
       if (!expanded.has(n.id)) toggleExpand(n.id, "open");
@@ -1771,7 +1866,18 @@
     });
     const btnDeep = document.getElementById("btnExpandDeep");
     if (btnDeep) btnDeep.addEventListener("click", () => expandAllChildren(n.id));
-    currentId = rootOf[n.id] || n.id;
+
+    el.detailBody.querySelectorAll("[data-focus-id]").forEach((card) => {
+      card.addEventListener("click", (ev) => {
+        if (ev.target.closest("[data-stop]")) return;
+        const id = card.getAttribute("data-focus-id");
+        if (id && byId[id]) {
+          showDetail(byId[id]);
+          scrollToNode(id);
+        }
+      });
+    });
+
     renderThread(n.id);
     renderList();
     draw();
