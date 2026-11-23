@@ -270,8 +270,15 @@
     #avatarLayer .av.selected {
       border-color: #fff !important;
       box-shadow: 0 0 0 2px #fff8, 0 4px 14px #000a;
-      z-index: 3;
+      z-index: 4;
     }
+    #avatarLayer .av.desc-hl {
+      border-color: #ffe08a !important;
+      box-shadow: 0 0 0 2px rgba(255, 220, 120, 0.85), 0 0 14px rgba(255, 200, 80, 0.45);
+      z-index: 3;
+      opacity: 1 !important;
+    }
+    #avatarLayer .av.dimmed { opacity: 0.28; }
     #avatarLayer .av.parent-hl {
       box-shadow: 0 0 0 3px rgba(255, 220, 120, 0.9);
       z-index: 3;
@@ -605,6 +612,8 @@
   let currentId = null;
   /** @type {string|null} */
   let selectedId = null;
+  /** @type {Set<string>} descendance du nœud sélectionné */
+  let selectedDescendants = new Set();
   /** @type {string|null} parent mis en avant au survol */
   let hoverId = null;
   /** @type {string|null} */
@@ -923,9 +932,13 @@
       img.style.height = d + "px";
       img.style.left = (cx - d / 2) + "px";
       img.style.top = (cy - d / 2) + "px";
+    const focusOn = !!selectedId;
+      const inFocus = !focusOn || n.id === selectedId || selectedDescendants.has(n.id);
       img.className = "av " + (n.relation || "reply")
         + (n.id === selectedId || n.id === hoverId ? " selected" : "")
-        + (n.id === hoverParentId ? " parent-hl" : "");
+        + (selectedDescendants.has(n.id) ? " desc-hl" : "")
+        + (n.id === hoverParentId ? " parent-hl" : "")
+        + (focusOn && !inFocus ? " dimmed" : "");
       img.title = "@" + (n.author || "");
     }
     for (const [id, img] of avatarEls) {
@@ -1233,6 +1246,26 @@
     childCap = new Map();
   }
 
+  /** Tous les descendants (reply/quote) d'un nœud dans le graphe chargé. */
+  function collectDescendants(id) {
+    const out = new Set();
+    if (!id) return out;
+    const stack = (childrenMap[id] || []).slice();
+    while (stack.length) {
+      const c = stack.pop();
+      if (!c || out.has(c)) continue;
+      out.add(c);
+      const kids = childrenMap[c] || [];
+      for (let i = 0; i < kids.length; i++) stack.push(kids[i]);
+    }
+    return out;
+  }
+
+  function setSelectedNode(id) {
+    selectedId = id || null;
+    selectedDescendants = id ? collectDescendants(id) : new Set();
+  }
+
   function sortedIndex() {
     const q = el.search.value.trim().toLowerCase();
     let rows = FOREST.index.slice();
@@ -1305,8 +1338,9 @@
     if (!byId[id]) return;
     const rid = rootOf[id] || id;
     currentId = rid;
-    selectedId = id;
+    setSelectedNode(id);
     await ensureTree(rid);
+    setSelectedNode(id);
     layoutVisible();
     renderList();
     updateStats();
@@ -1381,13 +1415,9 @@
         <div class="meta">${fmtDate(p.iso)}</div>
         <div class="excerpt">${escapeHtml(p.text || "")}</div>`;
       btn.addEventListener("click", () => {
-        selectedId = p.id;
         currentId = rootOf[p.id] || p.id;
         showDetail(p);
         scrollToNode(p.id);
-        renderThread(p.id);
-        renderList();
-        draw();
       });
       frag.appendChild(btn);
     }
@@ -1396,7 +1426,7 @@
 
   function showForest() {
     currentId = null;
-    selectedId = null;
+    setSelectedNode(null);
     resetExpansion();
     layoutVisible();
     fitView();
@@ -1406,7 +1436,7 @@
     el.detailTitle.textContent = "Forêt d'originales";
     el.detailBody.innerHTML = `<p class="empty">
       ${fmtNum(activeRootIds().length)} publications originales sur la chronologie.
-      Cliquez un point vert pour le détail, une pastille <strong>+N</strong> pour ouvrir sa cascade.
+      Cliquez un nœud pour le détail et surligner toute sa descendance.
     </p>`;
     draw();
   }
@@ -1552,7 +1582,7 @@
   function collapseAll() {
     resetExpansion();
     currentId = null;
-    selectedId = null;
+    setSelectedNode(null);
     layoutVisible();
     fitView();
     updateStats();
@@ -1660,14 +1690,28 @@
       }
       return w / view.scale;
     }
+    const focusOn = !!selectedId;
+    function inSelection(id) {
+      return id === selectedId || selectedDescendants.has(id);
+    }
+
     for (const e of layoutEdges) {
       const s = e.s;
       const t = e.t;
       if (!inView(s.px, s.py, s.r) && !inView(t.px, t.py, t.r)) continue;
       const rt = e.child_rt || 0;
-      ctx.strokeStyle = e.relation === "quote" ? COLORS.edgeQuote : COLORS.edgeReply;
-      ctx.globalAlpha = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
-      ctx.lineWidth = edgeLineWidth(e);
+      const edgeFocus = focusOn && inSelection(s.id) && inSelection(t.id);
+      if (edgeFocus) {
+        ctx.strokeStyle = "rgba(255, 220, 120, 0.95)";
+        ctx.globalAlpha = 0.95;
+        ctx.lineWidth = Math.max(edgeLineWidth(e) * 1.35, 1.8 / view.scale);
+      } else {
+        ctx.strokeStyle = e.relation === "quote" ? COLORS.edgeQuote : COLORS.edgeReply;
+        let a = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
+        if (focusOn) a *= 0.18;
+        ctx.globalAlpha = a;
+        ctx.lineWidth = edgeLineWidth(e);
+      }
       ctx.beginPath();
       const my = (s.py + t.py) / 2;
       ctx.moveTo(s.px, s.py);
@@ -1681,14 +1725,23 @@
     // pastilles de fond sous les photos (pendant le chargement) + labels si zoomé
     for (const n of layoutNodes) {
       if (!inView(n.px, n.py, n.r + 4)) continue;
+      const isSel = n.id === selectedId;
+      const isDesc = selectedDescendants.has(n.id);
+      const dim = focusOn && !isSel && !isDesc;
       ctx.beginPath();
       ctx.arc(n.px, n.py, n.r, 0, Math.PI * 2);
       ctx.fillStyle = nodeColor(n.relation);
-      ctx.globalAlpha = 0.35;
+      ctx.globalAlpha = dim ? 0.08 : (isSel || isDesc ? 0.55 : 0.35);
       ctx.fill();
+      if (isSel || isDesc) {
+        ctx.strokeStyle = isSel ? "rgba(255,255,255,0.95)" : "rgba(255, 220, 120, 0.9)";
+        ctx.lineWidth = (isSel ? 2.4 : 1.8) / view.scale;
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+      }
       ctx.globalAlpha = 1;
-      if (showChrome) {
-        ctx.fillStyle = "rgba(210,220,230,0.9)";
+      if (showChrome && !dim) {
+        ctx.fillStyle = isDesc || isSel ? "rgba(255, 235, 180, 0.95)" : "rgba(210,220,230,0.9)";
         ctx.font = `${Math.max(9, 11 / view.scale)}px sans-serif`;
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
@@ -1871,7 +1924,7 @@
 
   async function showDetail(n) {
     if (!n) return;
-    selectedId = n.id;
+    setSelectedNode(n.id);
     const rid = rootOf[n.id] || n.id;
     currentId = rid;
     el.detailTitle.textContent = `@${n.author || "?"} · sélection`;
@@ -1880,6 +1933,8 @@
 
     await ensureTree(rid);
     n = byId[n.id] || n;
+    // recalcul après chargement (enfants nouvellement connus)
+    setSelectedNode(n.id);
     const root = byId[rid] || n;
     const parent = parentOf[n.id] ? byId[parentOf[n.id]] : null;
     const childIds = filteredChildren(n.id);
@@ -1954,6 +2009,8 @@
 
     renderThread(n.id);
     renderList();
+    el.status.textContent =
+      `Sélection @${n.author || "?"} · ${fmtNum(selectedDescendants.size)} descendant(s) surlignés`;
     draw();
   }
 
