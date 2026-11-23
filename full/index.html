@@ -648,18 +648,50 @@
     };
   }
 
+  /** Influence des comptes : Σ RT (+ likes) des posts vus dans la forêt */
+  const authorInfl = Object.create(null);
+  const authorCounted = new Set();
+
+  function bumpAuthorInfl(author, rt, likes) {
+    const k = (author || "").trim().toLowerCase();
+    if (!k) return;
+    let a = authorInfl[k];
+    if (!a) a = authorInfl[k] = { rt: 0, likes: 0, posts: 0 };
+    a.rt += rt || 0;
+    a.likes += likes || 0;
+    a.posts += 1;
+  }
+
+  function bumpNodeAuthor(n) {
+    if (!n || !n.id || authorCounted.has(n.id)) return;
+    authorCounted.add(n.id);
+    bumpAuthorInfl(n.author, n.rt, n.likes);
+  }
+
+  /** 0 → inconnu / faible ; ~1+ = compte très amplifié dans le corpus */
+  function authorInfluenceScore(author) {
+    const a = authorInfl[(author || "").trim().toLowerCase()];
+    if (!a) return 0;
+    const raw = (a.rt || 0) + 0.15 * (a.likes || 0);
+    if (raw <= 0) return 0;
+    return Math.min(1.45, Math.log1p(raw) / Math.log1p(60000));
+  }
+
   function buildGlobalMaps() {
     byId = {};
     childrenMap = {};
     parentOf = {};
     rootOf = {};
     allRootIds = [];
+    for (const k of Object.keys(authorInfl)) delete authorInfl[k];
+    authorCounted.clear();
     for (const row of FOREST.index) {
       const rid = row.racine_id;
       allRootIds.push(rid);
       byId[rid] = stubFromIndex(row);
       rootOf[rid] = rid;
       childrenMap[rid] = childrenMap[rid] || [];
+      bumpNodeAuthor(byId[rid]);
     }
     allRootIds.sort((a, b) => (byId[a].t || 0) - (byId[b].t || 0) || a.localeCompare(b));
     for (const tree of Object.values(FOREST.trees)) mergeTreeIntoMaps(tree);
@@ -671,6 +703,7 @@
       byId[n.id] = { ...n, racine_id: rid };
       rootOf[n.id] = rid;
       if (!childrenMap[n.id]) childrenMap[n.id] = [];
+      bumpNodeAuthor(byId[n.id]);
     }
     for (const e of tree.edges) {
       if (!byId[e.source] || !byId[e.target]) continue;
@@ -795,11 +828,21 @@
 
   function radiusOf(n) {
     const v = Math.max(0, (el.sizeSubtree.checked ? n.subtree_rt : n.rt) || 0);
-    // RT≈0 → point minuscule ; hubs (centaines–milliers RT) nettement plus gros
-    if (v <= 0) return 1.6;
-    if (v <= 3) return 1.6 + 0.85 * v; // ~2.5–4.2
-    const t = Math.log1p(v) / Math.log1p(150);
-    return 3.0 + 28 * Math.pow(Math.min(t, 1.85), 1.45);
+    // base : RT du post (≈0 → minuscule)
+    let r;
+    if (v <= 0) r = 1.6;
+    else if (v <= 3) r = 1.6 + 0.85 * v;
+    else {
+      const t = Math.log1p(v) / Math.log1p(150);
+      r = 3.0 + 28 * Math.pow(Math.min(t, 1.85), 1.45);
+    }
+    // comptes influents (Σ RT dans la forêt) : jusqu'à ~×2.6 + plancher
+    const inf = authorInfluenceScore(n.author);
+    if (inf > 0) {
+      r *= 1 + 1.6 * Math.pow(inf, 1.15);
+      if (inf >= 0.4) r = Math.max(r, 6 + 22 * inf);
+    }
+    return r;
   }
 
   function avatarImgUrl(username) {
