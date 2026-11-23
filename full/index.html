@@ -1109,19 +1109,20 @@
 
   }
 
-  /** Full = ~35k racines / axe très long → autoriser un dézoom bien plus bas que le FR */
-  const MIN_SCALE = 0.0006;
+  /** Full déplié = très grand canvas → dézoom agressif pour la forme globale */
+  const MIN_SCALE = 0.00012;
   const MAX_SCALE = 4;
 
   function fitView() {
     const rect = el.wrap.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
-    const sx = (rect.width - 24) / Math.max(contentW, 1);
-    const sy = (rect.height - 24) / Math.max(contentH, 1);
-    // Vue d'ensemble réelle (fort dézoom) ; rezoom possible à la molette
-    view.scale = Math.max(MIN_SCALE, Math.min(sx, sy, 1.0));
-    view.tx = Math.max(8, (rect.width - contentW * view.scale) / 2);
-    view.ty = 16;
+    const sx = (rect.width - 32) / Math.max(contentW, 1);
+    const sy = (rect.height - 32) / Math.max(contentH, 1);
+    // marge ~8 % pour voir toute la silhouette sans coller aux bords
+    const raw = Math.min(sx, sy) * 0.92;
+    view.scale = Math.max(MIN_SCALE, Math.min(raw, 1.0));
+    view.tx = (rect.width - contentW * view.scale) / 2;
+    view.ty = (rect.height - contentH * view.scale) / 2;
   }
 
   function resetExpansion() {
@@ -1429,10 +1430,12 @@
           await new Promise((r) => setTimeout(r, 0));
         }
       }
-      setLoadProgress(1, "Mise en page…");
-      relayoutKeepView();
+      setLoadProgress(1, "Mise en page · vue d'ensemble…");
+      layoutVisible();
+      updateStats();
+      fitView();
       draw();
-      el.status.textContent = `Déplié · ${fmtNum(n)} arbres · ${fmtNum(visibleNodeIds().size)} nœuds visibles`;
+      el.status.textContent = `Déplié · ${fmtNum(n)} arbres · ${fmtNum(visibleNodeIds().size)} nœuds visibles · vue d'ensemble`;
     } finally {
       hideLoadOverlay();
       if (el.btnExpandAll) {
@@ -1948,8 +1951,8 @@
   buildGlobalMaps();
   resize();
   showForest();
-  // précharge max dès l'ouverture (ne bloque pas l'UI)
-  setTimeout(() => { preloadForestTrees(); }, 80);
+  // Par défaut : tout déplié + dézoom forme globale
+  setTimeout(() => { expandAll(); }, 60);
 })();
   </script>
 </body>
