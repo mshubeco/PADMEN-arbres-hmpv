@@ -182,6 +182,23 @@
       background: linear-gradient(180deg, #2a5a80 0%, #1e4060 100%);
       pointer-events: none;
     }
+    /* CTA secondaire : Tout replier (paire avec Tout déplier) */
+    #btnCollapseAll {
+      order: -1;
+      background: linear-gradient(180deg, #3a4554 0%, #2a3340 100%);
+      color: #e7eef6;
+      border: 1px solid #5a6a7c;
+      border-radius: 8px;
+      padding: 0.45rem 0.95rem;
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      box-shadow: 0 0 0 1px #1a2028, 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    #btnCollapseAll:hover:not(:disabled) {
+      background: linear-gradient(180deg, #4a5666 0%, #343e4c 100%);
+      border-color: #8b9aab;
+    }
     #loadOverlay {
       display: none;
       position: absolute; inset: 0; z-index: 20;
@@ -488,12 +505,12 @@
   <section id="main">
     <div id="toolbar">
       <button type="button" class="tb-btn" id="btnExpandAll" title="Déplier tous les nœuds de tous les arbres filtrés">Tout déplier</button>
+      <button type="button" class="tb-btn" id="btnCollapseAll" title="Replier toutes les cascades — ne garder que les originales">Tout replier</button>
       <span class="sep"></span>
       <span id="treeTitle">Sélectionnez un arbre</span>
       <span class="sep"></span>
       <span id="treeStats"></span>
       <span class="sep"></span>
-      <button type="button" class="tb-btn" id="btnCollapse" title="Ne garder que la racine et ses enfants directs">Replier</button>
       <button type="button" class="tb-btn" id="btnExpand1" title="Ouvrir un niveau de plus">+1 niveau</button>
       <span class="sep"></span>
       <span>Toutes les originales · pastille <strong>+N</strong> = déployer la cascade · ↓ temps</span>
@@ -580,6 +597,7 @@
     loFill: document.getElementById("loFill"),
     loPct: document.getElementById("loPct"),
     btnExpandAll: document.getElementById("btnExpandAll"),
+    btnCollapseAll: document.getElementById("btnCollapseAll"),
   };
   const ctx = el.cv.getContext("2d");
 
@@ -1528,11 +1546,21 @@
     }
   }
 
-  function collapseToRoot() {
+  function collapseAll() {
     resetExpansion();
+    currentId = null;
+    selectedId = null;
     layoutVisible();
     fitView();
     updateStats();
+    renderThread(null);
+    renderList();
+    el.detailTitle.textContent = "Forêt d'originales";
+    el.detailBody.innerHTML = `<p class="empty">
+      Cascades repliées · ${fmtNum(activeRootIds().length)} originales visibles.
+      Utilisez <strong>Tout déplier</strong> ou une pastille <strong>+N</strong> pour rouvrir.
+    </p>`;
+    el.status.textContent = `Replié · ${fmtNum(activeRootIds().length)} originales · vue d'ensemble`;
     draw();
   }
 
@@ -2087,9 +2115,9 @@
     document.getElementById(id).addEventListener("change", refreshForest);
   }
 
-  document.getElementById("btnCollapse").addEventListener("click", collapseToRoot);
   document.getElementById("btnExpand1").addEventListener("click", expandOneLevel);
   el.btnExpandAll.addEventListener("click", expandAll);
+  el.btnCollapseAll.addEventListener("click", collapseAll);
 
   window.addEventListener("resize", () => {
     resize();
