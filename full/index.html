@@ -686,13 +686,14 @@
     bumpAuthorInfl(n.author, n.rt, n.likes);
   }
 
-  /** 0 → inconnu / faible ; ~1+ = compte très amplifié dans le corpus */
+  /** 0 → inconnu / faible ; ≥1 = compte très amplifié dans le corpus */
   function authorInfluenceScore(author) {
     const a = authorInfl[(author || "").trim().toLowerCase()];
     if (!a) return 0;
     const raw = (a.rt || 0) + 0.15 * (a.likes || 0);
     if (raw <= 0) return 0;
-    return Math.min(1.45, Math.log1p(raw) / Math.log1p(60000));
+    // saturation plus basse → les gros comptes montent vite vers le plafond
+    return Math.min(1.7, Math.log1p(raw) / Math.log1p(18000));
   }
 
   function buildGlobalMaps() {
@@ -854,13 +855,15 @@
       const t = Math.log1p(v) / Math.log1p(150);
       r = 3.0 + 28 * Math.pow(Math.min(t, 1.85), 1.45);
     }
-    // comptes influents (Σ RT dans la forêt) : jusqu'à ~×2.6 + plancher
+    // comptes influents : fort contraste vs le reste (jusqu'à ~×5–6 + planchers)
     const inf = authorInfluenceScore(n.author);
     if (inf > 0) {
-      r *= 1 + 1.6 * Math.pow(inf, 1.15);
-      if (inf >= 0.4) r = Math.max(r, 6 + 22 * inf);
+      r *= 1 + 2.8 * Math.pow(inf, 0.95);
+      if (inf >= 0.3) r = Math.max(r, 8 + 38 * Math.pow(inf, 1.05));
+      if (inf >= 0.7) r = Math.max(r, 48 + 55 * (inf - 0.7));
+      if (inf >= 1.2) r = Math.max(r, 90 + 40 * (inf - 1.2));
     }
-    return r;
+    return Math.min(r, 140);
   }
 
   function avatarImgUrl(username) {
