@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PADMEN — HMPV Full · Arbre chronologique</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #171e26;
+      --panel2: #1c2530;
+      --border: #2a3542;
+      --text: #e7eef6;
+      --muted: #8b9aab;
+      --accent: #6ec6ff;
+      --reply: #5b9bd5;
+      --quote: #e8a45a;
+      --ancre: #9ad67a;
+      --font: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
+      --mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: var(--font);
+    }
+    body {
+      display: grid;
+      grid-template-columns: 320px 1fr 340px;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+    }
+    header {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; gap: 1rem;
+      padding: 0.65rem 1rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+    }
+    header h1 {
+      margin: 0; font-size: 0.95rem; font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    header .meta { color: var(--muted); font-size: 0.8rem; }
+    header .legend {
+      display: flex; gap: 0.85rem; margin-left: auto;
+      font-size: 0.78rem; color: var(--muted); align-items: center;
+    }
+    .swatch {
+      display: inline-block; width: 10px; height: 10px;
+      border-radius: 50%; margin-right: 0.3rem; vertical-align: -1px;
+    }
+    .swatch.reply { background: var(--reply); }
+    .swatch.quote { background: var(--quote); }
+    .swatch.ancre { background: var(--ancre); }
+    .swatch.edge-reply {
+      width: 16px; height: 2px; border-radius: 0; vertical-align: 3px;
+      background: var(--reply);
+    }
+    .swatch.edge-quote {
+      width: 16px; height: 2px; border-radius: 0; vertical-align: 3px;
+      background: var(--quote);
+    }
+
+    aside, #detail {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    #detail { border-right: none; border-left: 1px solid var(--border); }
+
+    .panel-head {
+      padding: 0.7rem 0.85rem 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .panel-head label {
+      display: block; font-size: 0.7rem; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.25rem;
+    }
+    .controls { display: flex; flex-direction: column; gap: 0.45rem; }
+    select, input[type="search"] {
+      width: 100%;
+      background: var(--panel2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.4rem 0.5rem; font: inherit; font-size: 0.82rem;
+    }
+    .row-checks {
+      display: flex; flex-wrap: wrap; gap: 0.55rem;
+      font-size: 0.78rem; color: var(--muted);
+    }
+    .row-checks label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+    #treeList { flex: 1; overflow: auto; padding: 0.35rem; }
+    .tree-item {
+      display: block; width: 100%; text-align: left;
+      background: transparent; border: 1px solid transparent;
+      border-radius: 8px; color: var(--text);
+      padding: 0.55rem 0.6rem; margin-bottom: 0.25rem;
+      cursor: pointer; font: inherit;
+    }
+    .tree-item:hover { background: var(--panel2); border-color: var(--border); }
+    .tree-item.active { background: #243041; border-color: #3d5470; }
+    .tree-item .top {
+      display: flex; justify-content: space-between; gap: 0.5rem;
+      font-size: 0.78rem; margin-bottom: 0.2rem;
+    }
+    .tree-item .author { color: var(--accent); font-weight: 600; }
+    .tree-item .stats { color: var(--muted); font-family: var(--mono); font-size: 0.72rem; }
+    .tree-item .excerpt {
+      font-size: 0.75rem; color: #b7c3d0;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; line-height: 1.35;
+    }
+    .thread-item {
+      display: block; width: 100%; text-align: left;
+      background: transparent; border: 1px solid transparent;
+      border-left: 3px solid var(--border);
+      border-radius: 0 8px 8px 0; color: var(--text);
+      padding: 0.4rem 0.5rem; margin-bottom: 0.2rem;
+      cursor: pointer; font: inherit;
+    }
+    .thread-item:hover { background: var(--panel2); }
+    .thread-item.active { background: #243041; border-left-color: var(--accent); }
+    .thread-item.sel { border-left-color: #fff; }
+    .thread-item .top {
+      display: flex; justify-content: space-between; gap: 0.4rem;
+      font-size: 0.72rem; margin-bottom: 0.15rem;
+    }
+    .thread-item .author { color: var(--accent); font-weight: 600; }
+    .thread-item .meta { color: var(--muted); font-family: var(--mono); font-size: 0.68rem; }
+    .thread-item .excerpt {
+      font-size: 0.72rem; color: #b7c3d0;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      overflow: hidden; line-height: 1.3;
+    }
+    .thread-item.reply { border-left-color: var(--reply); }
+    .thread-item.quote { border-left-color: var(--quote); }
+    .thread-item.ancre { border-left-color: var(--ancre); }
+
+    #main {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-width: 0; min-height: 0;
+      background: #0c1015;
+    }
+    #toolbar {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+      padding: 0.45rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      font-size: 0.78rem; color: var(--muted);
+    }
+    #toolbar strong { color: var(--text); font-weight: 600; }
+    #toolbar .sep { width: 1px; height: 1.1rem; background: var(--border); }
+    .tb-btn {
+      background: var(--panel2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.28rem 0.55rem; font: inherit; font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .tb-btn:hover { border-color: #4a6078; background: #243041; }
+    #canvasWrap { position: relative; min-height: 0; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+    canvas.dragging { cursor: grabbing; }
+    #avatarLayer {
+      position: absolute; inset: 0; z-index: 2;
+      pointer-events: none; overflow: hidden;
+    }
+    #avatarLayer .av {
+      position: absolute;
+      border-radius: 50%;
+      object-fit: cover;
+      box-sizing: border-box;
+      background: #243041;
+      box-shadow: 0 0 0 1px #0006;
+    }
+    #avatarLayer .av.reply { border: 2px solid var(--reply); }
+    #avatarLayer .av.quote { border: 2px solid var(--quote); }
+    #avatarLayer .av.ancre { border: 2.5px solid var(--ancre); }
+    #avatarLayer .av.selected {
+      border-color: #fff !important;
+      box-shadow: 0 0 0 2px #fff8, 0 4px 14px #000a;
+      z-index: 3;
+    }
+    #avatarLayer .av.parent-hl {
+      box-shadow: 0 0 0 3px rgba(255, 220, 120, 0.9);
+      z-index: 3;
+    }
+
+    #detail .body { flex: 1; overflow: auto; padding: 0.85rem; }
+    #detail h2 { margin: 0 0 0.5rem; font-size: 0.9rem; font-weight: 600; }
+    #detail .empty { color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+    .kv {
+      display: grid; grid-template-columns: 7.5rem 1fr;
+      gap: 0.25rem 0.5rem; font-size: 0.78rem; margin-bottom: 0.85rem;
+    }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; font-family: var(--mono); word-break: break-all; }
+    .badge {
+      display: inline-block; padding: 0.1rem 0.4rem; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    }
+    .badge.reply { background: #1e3a55; color: #9ec9ef; }
+    .badge.quote { background: #4a3218; color: #f0c48a; }
+    .badge.ancre { background: #243a1c; color: #b7e39a; }
+    .post-text {
+      white-space: pre-wrap; font-size: 0.86rem; line-height: 1.45;
+      background: var(--panel2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.7rem; margin: 0.5rem 0 0.85rem;
+    }
+    .hint {
+      font-size: 0.75rem; color: var(--muted); line-height: 1.4;
+      border-top: 1px solid var(--border); padding-top: 0.7rem; margin-top: 0.5rem;
+    }
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.7rem; }
+    a { color: var(--accent); }
+    #hoverTip {
+      position: absolute; pointer-events: none; z-index: 5;
+      display: none;
+      width: min(380px, calc(100% - 24px));
+      background: linear-gradient(165deg, #1c2633f5 0%, #151c26f7 100%);
+      border: 1px solid #3a4a5c;
+      border-radius: 12px;
+      padding: 0;
+      box-shadow: 0 12px 40px #000a, 0 0 0 1px #ffffff08 inset;
+      overflow: hidden;
+      backdrop-filter: blur(8px);
+    }
+    #hoverTip .ht-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 0.6rem; padding: 0.65rem 0.8rem 0.45rem;
+      border-bottom: 1px solid #2a3542;
+    }
+    #hoverTip .ht-who {
+      color: var(--accent); font-weight: 650; font-size: 0.84rem;
+      letter-spacing: 0.01em;
+    }
+    #hoverTip .ht-badge {
+      flex-shrink: 0;
+      font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.04em; padding: 0.12rem 0.45rem; border-radius: 999px;
+    }
+    #hoverTip .ht-badge.reply { background: #1e3a55; color: #9ec9ef; }
+    #hoverTip .ht-badge.quote { background: #4a3218; color: #f0c48a; }
+    #hoverTip .ht-badge.ancre { background: #243a1c; color: #b7e39a; }
+    #hoverTip .ht-date {
+      padding: 0.35rem 0.8rem 0;
+      font-size: 0.72rem; color: var(--muted); font-family: var(--mono);
+    }
+    #hoverTip .ht-text {
+      margin: 0.45rem 0.8rem 0.65rem;
+      padding: 0.55rem 0.65rem;
+      background: #0e141be8;
+      border: 1px solid #2a3542;
+      border-radius: 8px;
+      font-size: 0.8rem; line-height: 1.45; color: #e8eef5;
+      white-space: pre-wrap; word-break: break-word;
+      max-height: 280px; overflow: auto;
+    }
+    #hoverTip .ht-metrics {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 0; border-top: 1px solid #2a3542;
+    }
+    #hoverTip .ht-metric {
+      padding: 0.55rem 0.65rem;
+      display: flex; flex-direction: column; gap: 0.12rem;
+    }
+    #hoverTip .ht-metric + .ht-metric { border-left: 1px solid #2a3542; }
+    #hoverTip .ht-metric .k {
+      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+    #hoverTip .ht-metric .v {
+      font-size: 0.95rem; font-weight: 650; font-family: var(--mono);
+      color: var(--text);
+    }
+    #hoverTip .ht-parent {
+      margin: 0.55rem 0.8rem 0;
+      padding: 0.5rem 0.55rem;
+      background: #0e141be8;
+      border: 1px solid #2a3542;
+      border-radius: 8px;
+      display: flex; gap: 0.55rem; align-items: flex-start;
+    }
+    #hoverTip .ht-parent-av {
+      width: 36px; height: 36px; border-radius: 50%;
+      object-fit: cover; flex-shrink: 0;
+      border: 2px solid #5b9bd5; background: #2a3542;
+    }
+    #hoverTip .ht-parent-av.ancre { border-color: #9ad67a; }
+    #hoverTip .ht-parent-av.quote { border-color: #e8a45a; }
+    #hoverTip .ht-parent-av.reply { border-color: #5b9bd5; }
+    #hoverTip .ht-parent-body { min-width: 0; flex: 1; }
+    #hoverTip .ht-parent-label {
+      font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-bottom: 0.15rem;
+    }
+    #hoverTip .ht-parent-who {
+      font-size: 0.78rem; font-weight: 650; color: var(--accent);
+    }
+    #hoverTip .ht-parent-meta {
+      font-size: 0.68rem; color: var(--muted); font-family: var(--mono);
+      margin-top: 0.1rem;
+    }
+    #hoverTip .ht-parent-text {
+      font-size: 0.72rem; color: #c5d0dc; margin-top: 0.25rem;
+      display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+      overflow: hidden; line-height: 1.35;
+    }
+    #hoverTip .ht-parent.root {
+      opacity: 0.75; font-size: 0.75rem; color: var(--muted);
+      justify-content: center; padding: 0.4rem;
+    }
+    #status {
+      position: absolute; left: 0.75rem; bottom: 0.6rem; z-index: 4;
+      font-size: 0.72rem; color: var(--muted);
+      background: #0c1015cc; padding: 0.2rem 0.45rem; border-radius: 4px;
+    }
+    #hoverTip { z-index: 6; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PADMEN · HMPV Full</h1>
+    <div class="meta" id="headerMeta">Chargement…</div>
+    <div class="legend">
+      <span><i class="swatch ancre"></i>ancre</span>
+      <span><i class="swatch reply"></i>reply</span>
+      <span><i class="swatch quote"></i>quote</span>
+      <span><i class="swatch edge-reply"></i>arc ∝ RT enfant (0–3 = fin)</span>
+      <span><i class="swatch edge-quote"></i>arc quote</span>
+      <span>↓ temps · nœuds = avatar (taille ∝ RT) · labels si zoomé</span>
+    </div>
+  </header>
+
+  <aside>
+    <div class="panel-head">
+      <div class="controls">
+        <div>
+          <label for="sortBy">Trier les arbres</label>
+          <select id="sortBy">
+            <option value="subtree_rt">Volume RT sous-arbre</option>
+            <option value="n_nodes">Nombre de nœuds</option>
+            <option value="root_rt">RT de la racine</option>
+            <option value="max_depth">Profondeur max</option>
+            <option value="quote_share">Part de quotes</option>
+            <option value="span_h">Durée (h)</option>
+            <option value="root_iso">Date racine</option>
+          </select>
+        </div>
+        <div>
+          <label for="search">Filtrer</label>
+          <input id="search" type="search" placeholder="auteur, texte, id…" />
+        </div>
+        <div class="row-checks">
+          <label><input type="checkbox" id="showReply" checked /> replies</label>
+          <label><input type="checkbox" id="showQuote" checked /> quotes</label>
+          <label><input type="checkbox" id="hideZero" /> masquer RT=0</label>
+          <label><input type="checkbox" id="sizeSubtree" /> taille = sous-arbre</label>
+        </div>
+      </div>
+    </div>
+    <div class="panel-head" style="border-top:1px solid var(--border)">
+      <label>Fil du tweet sélectionné</label>
+      <div id="threadMeta" class="stats" style="font-size:0.72rem;color:var(--muted);margin-bottom:0.35rem">
+        Sélectionnez une publication
+      </div>
+    </div>
+    <div id="threadList" style="max-height:34%;overflow:auto;padding:0.35rem;border-bottom:1px solid var(--border)"></div>
+    <div class="panel-head" style="padding-top:0.55rem">
+      <label>Originales (forêt)</label>
+    </div>
+    <div id="treeList"></div>
+  </aside>
+
+  <section id="main">
+    <div id="toolbar">
+      <span id="treeTitle">Sélectionnez un arbre</span>
+      <span class="sep"></span>
+      <span id="treeStats"></span>
+      <span class="sep"></span>
+      <button type="button" class="tb-btn" id="btnCollapse" title="Ne garder que la racine et ses enfants directs">Replier</button>
+      <button type="button" class="tb-btn" id="btnExpand1" title="Ouvrir un niveau de plus">+1 niveau</button>
+      <button type="button" class="tb-btn" id="btnExpandAll" title="Déplier tous les nœuds de tous les arbres filtrés">Tout déplier</button>
+      <span class="sep"></span>
+      <span>Toutes les originales · pastille <strong>+N</strong> = déployer la cascade · ↓ temps</span>
+    </div>
+    <div id="canvasWrap">
+      <canvas id="cv"></canvas>
+      <div id="avatarLayer" aria-hidden="true"></div>
+      <div id="hoverTip"></div>
+      <div id="status"></div>
+    </div>
+  </section>
+
+  <aside id="detail">
+    <div class="panel-head">
+      <label>Publication</label>
+      <h2 id="detailTitle">Aucune sélection</h2>
+    </div>
+    <div class="body" id="detailBody">
+      <p class="empty">
+        Par défaut : toutes les publications originales (ancres), en chronologie.
+        Cliquez une pastille <strong>+N</strong> pour déployer replies / quotes.
+        Les retweets ne sont pas des enfants — ils définissent la taille.
+      </p>
+    </div>
+  </aside>
+
+  <script src="index.js"></script>
+  <script>
+(() => {
+  const FOREST = window.CASCADE_FOREST_INDEX;
+  if (!FOREST) {
+    document.getElementById("headerMeta").textContent =
+      "Données absentes — lancer : py -3.13 code/build_cascade_arbre_full.py";
+    return;
+  }
+  FOREST.trees = FOREST.trees || {};
+
+  /** Masquer originales isolées (n=1) avec RT racine < 10 */
+  const MIN_ISOLATED_ROOT_RT = 10;
+  const indexRawN = (FOREST.index || []).length;
+  FOREST.index = (FOREST.index || []).filter((r) => {
+    const n = r.n_nodes || 1;
+    const rt = r.root_rt || 0;
+    if (n <= 1 && rt < MIN_ISOLATED_ROOT_RT) return false;
+    return true;
+  });
+
+  const meta = FOREST.meta;
+  document.getElementById("headerMeta").textContent =
+    `${meta.label || "HMPV Full"} · ${FOREST.index.length.toLocaleString("fr-FR")} affichées / ${indexRawN.toLocaleString("fr-FR")}` +
+    ` (hors isolées RT<${MIN_ISOLATED_ROOT_RT}) · ${meta.generated_at}`;
+
+  const el = {
+    list: document.getElementById("treeList"),
+    threadList: document.getElementById("threadList"),
+    threadMeta: document.getElementById("threadMeta"),
+    sortBy: document.getElementById("sortBy"),
+    search: document.getElementById("search"),
+    showReply: document.getElementById("showReply"),
+    showQuote: document.getElementById("showQuote"),
+    hideZero: document.getElementById("hideZero"),
+    sizeSubtree: document.getElementById("sizeSubtree"),
+    treeTitle: document.getElementById("treeTitle"),
+    treeStats: document.getElementById("treeStats"),
+    detailTitle: document.getElementById("detailTitle"),
+    detailBody: document.getElementById("detailBody"),
+    tip: document.getElementById("hoverTip"),
+    status: document.getElementById("status"),
+    wrap: document.getElementById("canvasWrap"),
+    cv: document.getElementById("cv"),
+    avatarLayer: document.getElementById("avatarLayer"),
+  };
+  const ctx = el.cv.getContext("2d");
+
+  /** @type {string|null} racine mise en avant (liste / focus) */
+  let currentId = null;
+  /** @type {string|null} */
+  let selectedId = null;
+  /** @type {string|null} parent mis en avant au survol */
+  let hoverId = null;
+  /** @type {string|null} */
+  let hoverParentId = null;
+  /** @type {Set<string>} ids dont les enfants sont visibles */
+  let expanded = new Set();
+  /** combien d'enfants afficher par nœud ouvert (les plus forts en ΣRT d'abord) */
+  let childCap = new Map();
+  const CHILD_CAP_STEP = 10;
+  const CHILD_CAP_DEFAULT = 10;
+
+  /** Graphes fusionnés (toute la forêt) */
+  let childrenMap = {};
+  let parentOf = {};
+  let byId = {};
+  let rootOf = {}; // node id → racine_id
+  /** @type {string[]} */
+  let allRootIds = [];
+
+  let layoutNodes = [];
+  let layoutEdges = [];
+  let expandHits = [];
+  let view = { scale: 1, tx: 0, ty: 0 };
+  let dragging = false;
+  let dragMoved = false;
+  let lastPtr = null;
+  let dpr = 1;
+  let contentW = 800;
+  let contentH = 600;
+
+  const LANE_W = 110;
+  const PAD_L = 120;
+  const PAD_R = 100;
+  const PAD_T = 56;
+  const PAD_B = 64;
+
+  function stubFromIndex(row) {
+    return {
+      id: row.racine_id,
+      author: row.root_author,
+      author_id: row.author_id || "",
+      text: row.root_text || "",
+      iso: row.root_iso || row.iso,
+      t: row.t,
+      rt: row.root_rt ?? row.rt ?? 0,
+      likes: row.likes || 0,
+      replies: row.replies || 0,
+      quotes: row.quotes || 0,
+      relation: "ancre",
+      niveau: 0,
+      depth: 0,
+      subtree_rt: row.subtree_rt,
+      subtree_size: row.n_nodes || row.subtree_size || 1,
+      in_corpus: row.in_corpus !== false,
+      parent_id: "",
+      conversation_id: row.conversation_id || "",
+      dt_root_h: 0,
+      racine_id: row.racine_id,
+    };
+  }
+
+  function buildGlobalMaps() {
+    byId = {};
+    childrenMap = {};
+    parentOf = {};
+    rootOf = {};
+    allRootIds = [];
+    for (const row of FOREST.index) {
+      const rid = row.racine_id;
+      allRootIds.push(rid);
+      byId[rid] = stubFromIndex(row);
+      rootOf[rid] = rid;
+      childrenMap[rid] = childrenMap[rid] || [];
+    }
+    allRootIds.sort((a, b) => (byId[a].t || 0) - (byId[b].t || 0) || a.localeCompare(b));
+    for (const tree of Object.values(FOREST.trees)) mergeTreeIntoMaps(tree);
+  }
+
+  function mergeTreeIntoMaps(tree) {
+    const rid = tree.racine_id;
+    for (const n of tree.nodes) {
+      byId[n.id] = { ...n, racine_id: rid };
+      rootOf[n.id] = rid;
+      if (!childrenMap[n.id]) childrenMap[n.id] = [];
+    }
+    for (const e of tree.edges) {
+      if (!byId[e.source] || !byId[e.target]) continue;
+      if (!childrenMap[e.source]) childrenMap[e.source] = [];
+      if (!childrenMap[e.source].includes(e.target)) childrenMap[e.source].push(e.target);
+      parentOf[e.target] = e.source;
+    }
+  }
+
+  const treeLoading = new Set();
+  async function ensureTree(racineId, opts = {}) {
+    if (!racineId) return null;
+    if (FOREST.trees[racineId]) return FOREST.trees[racineId];
+    if (treeLoading.has(racineId)) {
+      while (treeLoading.has(racineId)) await new Promise((r) => setTimeout(r, 40));
+      return FOREST.trees[racineId] || null;
+    }
+    treeLoading.add(racineId);
+    try {
+      if (!opts.quiet) el.status.textContent = `Chargement arbre ${racineId.slice(0, 10)}…`;
+      const res = await fetch(`trees/${racineId}.json`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const tree = await res.json();
+      FOREST.trees[racineId] = tree;
+      mergeTreeIntoMaps(tree);
+      return tree;
+    } catch (err) {
+      console.error(err);
+      if (!opts.quiet) {
+        el.status.textContent = `Échec chargement arbre (${err.message}). Servir via http.server.`;
+      }
+      return null;
+    } finally {
+      treeLoading.delete(racineId);
+    }
+  }
+
+  /** Charge un lot d'arbres (concurrence limitée) — précharge / Tout déplier / +1 niveau. */
+  async function ensureTreesMany(ids, label, opts = {}) {
+    const uniq = [...new Set(ids.filter(Boolean))];
+    const pending = uniq.filter((id) => !FOREST.trees[id]);
+    if (!pending.length) return;
+    const CONC = opts.concurrency || 32;
+    let done = 0;
+    for (let i = 0; i < pending.length; i += CONC) {
+      const batch = pending.slice(i, i + CONC);
+      await Promise.all(batch.map((id) => ensureTree(id, { quiet: true })));
+      done += batch.length;
+      if (!opts.silent) {
+        el.status.textContent = `${label || "Chargement"} ${done.toLocaleString("fr-FR")}/${pending.length.toLocaleString("fr-FR")}…`;
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  }
+
+  /** Précharge agressive : arbres avec enfants d'abord (ΣRT desc), puis isolées RT≥10. */
+  let preloadRunning = false;
+  async function preloadForestTrees() {
+    if (preloadRunning) return;
+    preloadRunning = true;
+    const rows = FOREST.index.slice().sort((a, b) => (b.subtree_rt || 0) - (a.subtree_rt || 0));
+    const withKids = [];
+    const singles = [];
+    for (const r of rows) {
+      if ((r.n_nodes || 1) > 1) withKids.push(r.racine_id);
+      else singles.push(r.racine_id);
+    }
+    try {
+      await ensureTreesMany(withKids, "Préchargement cascades", { concurrency: 40 });
+      await ensureTreesMany(singles, "Préchargement isolées", { concurrency: 40 });
+      el.status.textContent =
+        `Prêt · ${Object.keys(FOREST.trees).length.toLocaleString("fr-FR")} arbres en mémoire · ` +
+        `${FOREST.index.length.toLocaleString("fr-FR")} originales affichées`;
+    } finally {
+      preloadRunning = false;
+    }
+  }
+
+  const COLORS = {
+    reply: "#5b9bd5",
+    quote: "#e8a45a",
+    ancre: "#9ad67a",
+    edgeReply: "rgba(91,155,213,0.65)",
+    edgeQuote: "rgba(232,164,90,0.8)",
+    axis: "rgba(139,154,171,0.4)",
+    label: "rgba(180,194,210,0.95)",
+    expand: "#2a3d52",
+    expandStroke: "#6ec6ff",
+  };
+
+  /** Seuil : labels @ et pastilles +N seulement assez zoomé */
+  const LABEL_ZOOM = 0.72;
+  /** imgs HTML par id de nœud (couche au-dessus du canvas) */
+  const avatarEls = new Map();
+
+  function radiusOf(n) {
+    const v = Math.max(0, (el.sizeSubtree.checked ? n.subtree_rt : n.rt) || 0);
+    // RT≈0 → point minuscule ; hubs (centaines–milliers RT) nettement plus gros
+    if (v <= 0) return 1.6;
+    if (v <= 3) return 1.6 + 0.85 * v; // ~2.5–4.2
+    const t = Math.log1p(v) / Math.log1p(150);
+    return 3.0 + 28 * Math.pow(Math.min(t, 1.85), 1.45);
+  }
+
+  function avatarImgUrl(username) {
+    const key = (username || "").trim().toLowerCase() || "user";
+    const fallback = encodeURIComponent(
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(key)}&background=2a3542&color=e7eef6&size=128&bold=true`
+    );
+    // unavatar → photo X ; sinon initiales
+    return `https://unavatar.io/twitter/${encodeURIComponent(key)}?fallback=${fallback}`;
+  }
+
+  function syncAvatarLayer() {
+    if (!el.avatarLayer) return;
+    const rect = el.wrap.getBoundingClientRect();
+    const margin = 120;
+    const seen = new Set();
+    for (const n of layoutNodes) {
+      const d = Math.max(2, n.r * 2 * view.scale);
+      const cx = view.tx + n.px * view.scale;
+      const cy = view.ty + n.py * view.scale;
+      // pas d'avatar HTML si trop petit à l'écran (le point canvas suffit)
+      if (d < 5) {
+        const old = avatarEls.get(n.id);
+        if (old) {
+          old.remove();
+          avatarEls.delete(n.id);
+        }
+        continue;
+      }
+      // virtualisation : seulement les avatars dans / près du viewport
+      if (cx + d < -margin || cy + d < -margin || cx - d > rect.width + margin || cy - d > rect.height + margin) {
+        const old = avatarEls.get(n.id);
+        if (old) {
+          old.remove();
+          avatarEls.delete(n.id);
+        }
+        continue;
+      }
+      seen.add(n.id);
+      let img = avatarEls.get(n.id);
+      if (!img) {
+        img = document.createElement("img");
+        img.className = "av";
+        img.alt = "";
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.referrerPolicy = "no-referrer";
+        img.src = avatarImgUrl(n.author);
+        img.onerror = () => {
+          img.src = `https://ui-avatars.com/api/?name=${encodeURIComponent((n.author || "?")[0] || "?")}&background=2a3542&color=e7eef6&size=128&bold=true`;
+          img.onerror = null;
+        };
+        el.avatarLayer.appendChild(img);
+        avatarEls.set(n.id, img);
+      }
+      img.style.width = d + "px";
+      img.style.height = d + "px";
+      img.style.left = (cx - d / 2) + "px";
+      img.style.top = (cy - d / 2) + "px";
+      img.className = "av " + (n.relation || "reply")
+        + (n.id === selectedId || n.id === hoverId ? " selected" : "")
+        + (n.id === hoverParentId ? " parent-hl" : "");
+      img.title = "@" + (n.author || "");
+    }
+    for (const [id, img] of avatarEls) {
+      if (!seen.has(id)) {
+        img.remove();
+        avatarEls.delete(id);
+      }
+    }
+  }
+
+  function nodeColor(rel) {
+    if (rel === "quote") return COLORS.quote;
+    if (rel === "ancre") return COLORS.ancre;
+    return COLORS.reply;
+  }
+
+  function fmtNum(n) {
+    return Number(n).toLocaleString("fr-FR");
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function allowedChild(node) {
+    if (!node) return false;
+    if (node.relation === "ancre") return true;
+    if (node.relation === "reply" && !el.showReply.checked) return false;
+    if (node.relation === "quote" && !el.showQuote.checked) return false;
+    if (el.hideZero.checked && node.rt === 0) return false;
+    return true;
+  }
+
+  /** Originales présentes dans le filtre liste (recherche). */
+  function activeRootIds() {
+    const allowed = new Set(sortedIndex().map((r) => r.racine_id));
+    return allRootIds.filter((id) => allowed.has(id));
+  }
+
+  function filteredChildren(id) {
+    return (childrenMap[id] || [])
+      .filter((cid) => allowedChild(byId[cid]))
+      .sort((a, b) => {
+        const d = byId[b].subtree_rt - byId[a].subtree_rt;
+        if (d !== 0) return d;
+        return byId[a].t - byId[b].t;
+      });
+  }
+
+  function capFor(id) {
+    return childCap.get(id) ?? CHILD_CAP_DEFAULT;
+  }
+
+  function cappedChildren(id) {
+    const all = filteredChildren(id);
+    if (!expanded.has(id)) return [];
+    return all.slice(0, capFor(id));
+  }
+
+  function hiddenSiblingCount(id) {
+    if (!expanded.has(id)) return 0;
+    return Math.max(0, filteredChildren(id).length - capFor(id));
+  }
+
+  function hiddenDescendantCount(id) {
+    if (expanded.has(id)) {
+      // enfants non encore affichés (plafond) + descendants sous les enfants affichés fermés
+      let n = hiddenSiblingCount(id);
+      for (const c of cappedChildren(id)) {
+        if (!expanded.has(c)) {
+          const stack = [c];
+          const seen = new Set();
+          while (stack.length) {
+            const x = stack.pop();
+            if (seen.has(x)) continue;
+            seen.add(x);
+            n += 1;
+            for (const g of filteredChildren(x)) stack.push(g);
+          }
+        }
+      }
+      return n;
+    }
+    let n = 0;
+    const stack = filteredChildren(id).slice();
+    const seen = new Set();
+    while (stack.length) {
+      const c = stack.pop();
+      if (seen.has(c)) continue;
+      seen.add(c);
+      n += 1;
+      for (const g of filteredChildren(c)) stack.push(g);
+    }
+    return n;
+  }
+
+  function visibleNodeIds() {
+    const roots = activeRootIds();
+    const vis = new Set(roots);
+    const queue = roots.slice();
+    while (queue.length) {
+      const id = queue.shift();
+      if (!expanded.has(id)) continue;
+      for (const c of cappedChildren(id)) {
+        if (vis.has(c)) continue;
+        vis.add(c);
+        queue.push(c);
+      }
+    }
+    return vis;
+  }
+
+  /** Ancêtre « branche » = enfant direct de la racine (sinon la racine). */
+  function branchHead(id, rootId) {
+    let cur = id;
+    while (parentOf[cur] && parentOf[cur] !== rootId) cur = parentOf[cur];
+    if (parentOf[cur] === rootId) return cur;
+    return rootId;
+  }
+
+  /**
+   * Forêt :
+   * - toutes les originales (ancres filtrées) toujours visibles
+   * - Y = chronologie globale
+   * - X = tronc central pour les ancres ; enfants en couloirs G/D autour de leur racine
+   */
+  function layoutVisible() {
+    layoutNodes = [];
+    layoutEdges = [];
+    expandHits = [];
+
+    const roots = activeRootIds();
+    const vis = visibleNodeIds();
+    const nodes = [...vis].map((id) => byId[id]).filter(Boolean);
+    if (!nodes.length) return;
+
+    const visChildren = {};
+    for (const id of vis) {
+      visChildren[id] = cappedChildren(id).filter((c) => vis.has(c));
+    }
+
+    // Originales près du tronc ; léger décalage alterné pour éviter la superposition
+    const rootLane = {};
+    roots.forEach((rid, i) => {
+      rootLane[rid] = (i % 2 === 0) ? 0 : 0.45;
+    });
+
+    const laneOf = {};
+    for (const rid of roots) {
+      laneOf[rid] = rootLane[rid] || 0;
+      const heads = (visChildren[rid] || []).slice();
+      let left = -1;
+      let right = 1;
+      const base = laneOf[rid];
+      for (let i = 0; i < heads.length; i++) {
+        const offset = (i % 2 === 0) ? right++ : left--;
+        laneOf[heads[i]] = base + offset;
+      }
+    }
+    for (const n of nodes) {
+      const rid = rootOf[n.id] || n.id;
+      if (n.id === rid) continue;
+      const head = branchHead(n.id, rid);
+      if (laneOf[head] == null) laneOf[head] = (laneOf[rid] || 0) + 1;
+      const depthFromHead = n.id === head
+        ? 0
+        : Math.max(0, (n.depth || 0) - (byId[head]?.depth || 1));
+      const sign = Math.sign(laneOf[head] - (laneOf[rid] || 0)) || 1;
+      laneOf[n.id] = laneOf[head] + sign * depthFromHead * 0.35;
+    }
+
+    nodes.sort((a, b) => (a.t - b.t) || a.id.localeCompare(b.id));
+    const tMin = nodes[0].t;
+    const tMax = nodes[nodes.length - 1].t;
+    const tSpan = Math.max(tMax - tMin, 1);
+    const spanH = tSpan / 3600;
+    // Hauteur pilotée par le temps réel (plus les délais sont longs, plus l'axe s'étire)
+    const pxPerHour = spanH <= 6 ? 90 : spanH <= 24 ? 36 : spanH <= 168 ? 10 : spanH <= 720 ? 3.5 : 1.2;
+    const minGap = 22;
+    const timeHeight = Math.max(nodes.length * minGap, spanH * pxPerHour, 420);
+
+    // Position Y = temps proportionnel, puis poussée pour respecter un écart mini
+    const yPix = {};
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
+      let y = ((n.t - tMin) / tSpan) * timeHeight;
+      if (i > 0) {
+        const prev = nodes[i - 1];
+        y = Math.max(y, yPix[prev.id] + minGap);
+      }
+      yPix[n.id] = y;
+    }
+
+    const laneVals = nodes.map((n) => laneOf[n.id] ?? 0);
+    const laneMin = Math.min(...laneVals, 0);
+
+    layoutNodes = nodes.map((n) => {
+      const lane = laneOf[n.id] ?? 0;
+      const px = PAD_L + (lane - laneMin) * LANE_W + 280;
+      const py = PAD_T + yPix[n.id];
+      return { ...n, px, py, r: radiusOf(n), lane };
+    });
+    layoutNodes._timeHeight = timeHeight;
+    layoutNodes._spanH = spanH;
+
+    layoutNodes.sort((a, b) => a.py - b.py || a.px - b.px);
+    for (let i = 0; i < layoutNodes.length; i++) {
+      for (let j = i + 1; j < layoutNodes.length; j++) {
+        const a = layoutNodes[i];
+        const b = layoutNodes[j];
+        if (b.py - a.py > Math.max(a.r + b.r + 8, 32)) break;
+        const minDx = a.r + b.r + 16;
+        const dx = b.px - a.px;
+        if (Math.abs(dx) < minDx) {
+          const push = (minDx - Math.abs(dx)) / 2 + 2;
+          if (dx >= 0) { b.px += push; a.px -= push; }
+          else { b.px -= push; a.px += push; }
+        }
+      }
+    }
+
+    const xs = layoutNodes.map((n) => n.px);
+    const xMin = Math.min(...xs);
+    if (xMin < PAD_L) {
+      const shift = PAD_L - xMin;
+      for (const n of layoutNodes) n.px += shift;
+    }
+    const xMaxPx = Math.max(...layoutNodes.map((n) => n.px));
+    const yMaxPx = Math.max(...layoutNodes.map((n) => n.py));
+    contentW = Math.max(720, xMaxPx + PAD_R + 40);
+    contentH = Math.max(480, yMaxPx + PAD_B + 20);
+
+    const pos = Object.fromEntries(layoutNodes.map((n) => [n.id, n]));
+    for (const n of layoutNodes) {
+      for (const c of visChildren[n.id] || []) {
+        if (!pos[c]) continue;
+        const child = byId[c];
+        layoutEdges.push({
+          source: n.id,
+          target: c,
+          relation: child.relation,
+          child_rt: child.rt || 0,
+          child_likes: child.likes || 0,
+          s: pos[n.id],
+          t: pos[c],
+        });
+      }
+      const direct = filteredChildren(n.id).length;
+      const moreSiblings = hiddenSiblingCount(n.id);
+      let hiddenDeep = !expanded.has(n.id) ? hiddenDescendantCount(n.id) : 0;
+      // racine pas encore chargée : indiquer la taille d'arbre depuis l'index
+      if (!expanded.has(n.id) && n.relation === "ancre" && !FOREST.trees[n.id] && n.subtree_size > 1) {
+        hiddenDeep = Math.max(hiddenDeep, n.subtree_size - 1);
+      }
+      if (!expanded.has(n.id) && (direct > 0 || hiddenDeep > 0)) {
+        expandHits.push({
+          id: n.id, x: n.px + n.r + 16, y: n.py, r: 12,
+          n: hiddenDeep || direct, mode: "open",
+        });
+      } else if (expanded.has(n.id) && moreSiblings > 0) {
+        expandHits.push({
+          id: n.id, x: n.px + n.r + 16, y: n.py, r: 12,
+          n: moreSiblings, mode: "more",
+        });
+      } else if (expanded.has(n.id) && direct > 0) {
+        expandHits.push({
+          id: n.id, x: n.px + n.r + 16, y: n.py, r: 11,
+          n: -1, mode: "close",
+        });
+      }
+    }
+
+    layoutNodes._tMin = tMin;
+    layoutNodes._tMax = tMax;
+
+  }
+
+  /** Full = ~35k racines / axe très long → autoriser un dézoom bien plus bas que le FR */
+  const MIN_SCALE = 0.0006;
+  const MAX_SCALE = 4;
+
+  function fitView() {
+    const rect = el.wrap.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+    const sx = (rect.width - 24) / Math.max(contentW, 1);
+    const sy = (rect.height - 24) / Math.max(contentH, 1);
+    // Vue d'ensemble réelle (fort dézoom) ; rezoom possible à la molette
+    view.scale = Math.max(MIN_SCALE, Math.min(sx, sy, 1.0));
+    view.tx = Math.max(8, (rect.width - contentW * view.scale) / 2);
+    view.ty = 16;
+  }
+
+  function resetExpansion() {
+    expanded = new Set();
+    childCap = new Map();
+  }
+
+  function sortedIndex() {
+    const q = el.search.value.trim().toLowerCase();
+    let rows = FOREST.index.slice();
+    if (q) {
+      rows = rows.filter((r) =>
+        (r.root_author || "").toLowerCase().includes(q) ||
+        (r.root_text || "").toLowerCase().includes(q) ||
+        r.racine_id.includes(q)
+      );
+    }
+    const key = el.sortBy.value;
+    rows.sort((a, b) => {
+      if (key === "root_iso") return String(a.root_iso).localeCompare(String(b.root_iso));
+      return (b[key] ?? 0) - (a[key] ?? 0);
+    });
+    return rows;
+  }
+
+  const LIST_CAP = 400;
+  function renderList() {
+    const rows = sortedIndex();
+    const shown = rows.slice(0, LIST_CAP);
+    el.list.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    for (const r of shown) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tree-item" + (r.racine_id === currentId ? " active" : "");
+      btn.innerHTML = `
+        <div class="top">
+          <span class="author">@${escapeHtml(r.root_author || "?")}</span>
+          <span class="stats">ΣRT ${fmtNum(r.subtree_rt)} · n=${fmtNum(r.n_nodes)} · d=${r.max_depth}</span>
+        </div>
+        <div class="excerpt">${escapeHtml(r.root_text || "")}</div>`;
+      btn.addEventListener("click", () => focusRoot(r.racine_id));
+      frag.appendChild(btn);
+    }
+    if (rows.length > LIST_CAP) {
+      const note = document.createElement("div");
+      note.className = "empty";
+      note.style.padding = "0.5rem";
+      note.textContent = `Liste tronquée : ${LIST_CAP.toLocaleString("fr-FR")} / ${rows.length.toLocaleString("fr-FR")} (filtre / recherche pour affiner)`;
+      frag.appendChild(note);
+    }
+    el.list.appendChild(frag);
+  }
+
+  function updateStats() {
+    const roots = activeRootIds();
+    const vis = visibleNodeIds().size;
+    const nPosts = roots.reduce((s, id) => s + (FOREST.trees[id]?.n_nodes || 1), 0);
+    el.treeTitle.innerHTML = `<strong>Forêt</strong> · ${fmtNum(roots.length)} originales`;
+    el.treeStats.textContent =
+      `visibles ${fmtNum(vis)} · ${fmtNum(roots.length)} ancres` +
+      (expanded.size ? ` · ${fmtNum(expanded.size)} nœud(s) déplié(s)` : " · cascades repliées") +
+      ` · pool ${fmtNum(nPosts)} posts`;
+    el.status.textContent = `${fmtNum(vis)} nœuds · taille = importance · labels / +N si zoom ≥ ${LABEL_ZOOM}`;
+  }
+
+  function scrollToNode(id) {
+    const n = layoutNodes.find((x) => x.id === id);
+    if (!n) return;
+    const rect = el.wrap.getBoundingClientRect();
+    view.tx = rect.width / 2 - n.px * view.scale;
+    view.ty = rect.height * 0.25 - n.py * view.scale;
+  }
+
+  /** Met en avant une originale sans masquer les autres. */
+  async function focusRoot(id) {
+    if (!byId[id]) return;
+    const rid = rootOf[id] || id;
+    currentId = rid;
+    selectedId = id;
+    await ensureTree(rid);
+    layoutVisible();
+    renderList();
+    updateStats();
+    showDetail(byId[id]);
+    scrollToNode(id);
+    draw();
+  }
+
+  /** Fil = lignée jusqu'à la racine + sous-arbre du nœud (même conversation si dispo). */
+  function threadNodesFor(id) {
+    if (!byId[id]) return [];
+    const rid = rootOf[id] || id;
+    const conv = byId[id].conversation_id || "";
+    const keep = new Set();
+
+    // lignée vers la racine
+    let cur = id;
+    while (cur) {
+      keep.add(cur);
+      cur = parentOf[cur];
+    }
+    keep.add(rid);
+
+    // descendants du nœud sélectionné
+    const stack = [id];
+    while (stack.length) {
+      const x = stack.pop();
+      keep.add(x);
+      for (const c of (childrenMap[x] || [])) stack.push(c);
+    }
+
+    // même conversation_id dans l'arbre (réponses du fil X)
+    if (conv) {
+      const tree = FOREST.trees[rid];
+      if (tree) {
+        for (const n of tree.nodes) {
+          if (n.conversation_id === conv) keep.add(n.id);
+        }
+      }
+    }
+
+    return [...keep]
+      .map((i) => byId[i])
+      .filter(Boolean)
+      .sort((a, b) => (a.t - b.t) || a.depth - b.depth || a.id.localeCompare(b.id));
+  }
+
+  function renderThread(id) {
+    if (!el.threadList) return;
+    if (!id || !byId[id]) {
+      el.threadMeta.textContent = "Sélectionnez une publication";
+      el.threadList.innerHTML = "";
+      return;
+    }
+    const nodes = threadNodesFor(id);
+    const n = byId[id];
+    el.threadMeta.textContent =
+      `${nodes.length} posts · conv. ${(n.conversation_id || "—").slice(0, 12)}… · racine ${(rootOf[id] || "").slice(0, 8)}…`;
+    el.threadList.innerHTML = "";
+    const frag = document.createDocumentFragment();
+    for (const p of nodes) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `thread-item ${p.relation}` + (p.id === selectedId ? " sel" : "");
+      const indent = Math.min(p.depth || 0, 8);
+      btn.style.marginLeft = `${indent * 8}px`;
+      btn.innerHTML = `
+        <div class="top">
+          <span class="author">@${escapeHtml(p.author || "?")}</span>
+          <span class="meta">${p.relation} · RT ${fmtNum(p.rt)} · ♥ ${fmtNum(p.likes)}</span>
+        </div>
+        <div class="meta">${fmtDate(p.iso)}</div>
+        <div class="excerpt">${escapeHtml(p.text || "")}</div>`;
+      btn.addEventListener("click", () => {
+        selectedId = p.id;
+        currentId = rootOf[p.id] || p.id;
+        showDetail(p);
+        scrollToNode(p.id);
+        renderThread(p.id);
+        renderList();
+        draw();
+      });
+      frag.appendChild(btn);
+    }
+    el.threadList.appendChild(frag);
+  }
+
+  function showForest() {
+    currentId = null;
+    selectedId = null;
+    resetExpansion();
+    layoutVisible();
+    fitView();
+    renderList();
+    renderThread(null);
+    updateStats();
+    el.detailTitle.textContent = "Forêt d'originales";
+    el.detailBody.innerHTML = `<p class="empty">
+      ${fmtNum(activeRootIds().length)} publications originales sur la chronologie.
+      Cliquez un point vert pour le détail, une pastille <strong>+N</strong> pour ouvrir sa cascade.
+    </p>`;
+    draw();
+  }
+
+  /** Relayout sans toucher au zoom / pan. */
+  function relayoutKeepView() {
+    layoutVisible();
+    updateStats();
+  }
+
+  async function toggleExpand(id, mode) {
+    const rid = rootOf[id] || id;
+    await ensureTree(rid);
+    if (mode === "more") {
+      childCap.set(id, capFor(id) + CHILD_CAP_STEP);
+    } else if (mode === "close") {
+      expanded.delete(id);
+      childCap.delete(id);
+    } else {
+      expanded.add(id);
+      if (!childCap.has(id)) childCap.set(id, CHILD_CAP_DEFAULT);
+    }
+    relayoutKeepView();
+    if (byId[id]) showDetail(byId[id]);
+    else draw();
+  }
+
+  /** Déplie tout le sous-arbre du nœud (tous degrés), sans reset de zoom. */
+  async function expandAllChildren(id) {
+    if (!byId[id]) return;
+    await ensureTree(rootOf[id] || id);
+    const stack = [id];
+    while (stack.length) {
+      const nid = stack.pop();
+      const kids = filteredChildren(nid);
+      if (!kids.length) continue;
+      expanded.add(nid);
+      childCap.set(nid, kids.length);
+      for (const c of kids) stack.push(c);
+    }
+    relayoutKeepView();
+    if (byId[id]) showDetail(byId[id]);
+    else draw();
+  }
+
+  async function expandOneLevel() {
+    const targets = currentId ? [currentId] : activeRootIds();
+    await ensureTreesMany(targets, "+1 niveau · chargement");
+    let opened = false;
+    for (const rootId of targets) {
+      if (!expanded.has(rootId) && filteredChildren(rootId).length) {
+        expanded.add(rootId);
+        childCap.set(rootId, CHILD_CAP_DEFAULT);
+        opened = true;
+        if (currentId) break;
+      }
+    }
+    if (!opened) {
+      const vis = visibleNodeIds();
+      const need = [...vis].map((id) => rootOf[id] || id);
+      await ensureTreesMany(need, "+1 niveau · chargement");
+      for (const id of vis) {
+        const all = filteredChildren(id);
+        const shown = cappedChildren(id);
+        if (all.length > shown.length) {
+          childCap.set(id, capFor(id) + CHILD_CAP_STEP);
+          opened = true;
+        } else {
+          for (const c of shown) {
+            if (filteredChildren(c).length && !expanded.has(c)) {
+              expanded.add(c);
+              childCap.set(c, CHILD_CAP_DEFAULT);
+              opened = true;
+            }
+          }
+        }
+        if (currentId && opened) break;
+      }
+    }
+    relayoutKeepView();
+    draw();
+  }
+
+  async function expandAll() {
+    const roots = activeRootIds();
+    el.status.textContent = `Dépliage complet · 0/${fmtNum(roots.length)}…`;
+    await ensureTreesMany(roots, "Dépliage · chargement");
+    for (const rootId of roots) {
+      const stack = [rootId];
+      while (stack.length) {
+        const id = stack.pop();
+        expanded.add(id);
+        const kids = filteredChildren(id);
+        childCap.set(id, Math.max(kids.length, 1));
+        for (const c of kids) stack.push(c);
+      }
+    }
+    el.status.textContent = `Déplié · ${fmtNum(roots.length)} arbres`;
+    relayoutKeepView();
+    draw();
+  }
+
+  function collapseToRoot() {
+    resetExpansion();
+    layoutVisible();
+    fitView();
+    updateStats();
+    draw();
+  }
+
+  function resize() {
+    const rect = el.wrap.getBoundingClientRect();
+    dpr = window.devicePixelRatio || 1;
+    el.cv.width = Math.max(1, Math.floor(rect.width * dpr));
+    el.cv.height = Math.max(1, Math.floor(rect.height * dpr));
+    el.cv.style.width = rect.width + "px";
+    el.cv.style.height = rect.height + "px";
+    draw();
+  }
+
+  function worldFromEvent(ev) {
+    const rect = el.cv.getBoundingClientRect();
+    return {
+      x: (ev.clientX - rect.left - view.tx) / view.scale,
+      y: (ev.clientY - rect.top - view.ty) / view.scale,
+    };
+  }
+
+  function hitNode(wx, wy) {
+    let best = null;
+    let bestD = Infinity;
+    for (const n of layoutNodes) {
+      const d = Math.hypot(n.px - wx, n.py - wy);
+      const thr = Math.max(n.r + 4, 10);
+      if (d <= thr && d < bestD) {
+        best = n;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  function hitExpand(wx, wy) {
+    if (view.scale < LABEL_ZOOM) return null;
+    for (const h of expandHits) {
+      if (Math.hypot(h.x - wx, h.y - wy) <= h.r + 3) return h;
+    }
+    return null;
+  }
+
+  function draw() {
+    const cssW = el.cv.width / dpr;
+    const cssH = el.cv.height / dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    if (!layoutNodes.length) {
+      ctx.fillStyle = COLORS.label;
+      ctx.font = "14px sans-serif";
+      ctx.fillText("Aucun nœud visible — dépliez (+N) ou assouplissez les filtres.", 24, 40);
+      return;
+    }
+
+    ctx.save();
+    ctx.translate(view.tx, view.ty);
+    ctx.scale(view.scale, view.scale);
+
+    // axe monde (ligne fine) — les dates lisibles sont dans la barre écran fixe après restore
+    const axisX = PAD_L - 40;
+    const y0 = PAD_T;
+    const y1 = Math.max(...layoutNodes.map((n) => n.py), PAD_T + 40);
+    ctx.strokeStyle = COLORS.axis;
+    ctx.lineWidth = 1 / view.scale;
+    ctx.beginPath();
+    ctx.moveTo(axisX, y0);
+    ctx.lineTo(axisX, y1);
+    ctx.stroke();
+
+    // culling viewport (monde) pour limiter le coût avec des milliers de nœuds
+    const marginW = 80 / view.scale;
+    const xL = (0 - view.tx) / view.scale - marginW;
+    const xR = (cssW - view.tx) / view.scale + marginW;
+    const yT = (0 - view.ty) / view.scale - marginW;
+    const yB = (cssH - view.ty) / view.scale + marginW;
+    function inView(px, py, pad = 0) {
+      return px + pad >= xL && px - pad <= xR && py + pad >= yT && py - pad <= yB;
+    }
+
+    // edges : RT enfant domine — RT 0 / faibles = fil ; RT élevés = rupture visible
+    function edgeLineWidth(e) {
+      const rt = e.child_rt || 0;
+      const likes = e.child_likes || 0;
+      let w;
+      if (rt <= 0) {
+        w = 0.22 + Math.min(0.35, 0.06 * Math.log1p(likes));
+      } else if (rt <= 3) {
+        w = 0.35 + 0.22 * rt + 0.04 * Math.log1p(likes);
+      } else {
+        const t = Math.log1p(rt) / Math.log1p(300);
+        w = 1.0 + 8.5 * Math.pow(Math.min(t, 1.25), 1.75);
+      }
+      return w / view.scale;
+    }
+    for (const e of layoutEdges) {
+      const s = e.s;
+      const t = e.t;
+      if (!inView(s.px, s.py, s.r) && !inView(t.px, t.py, t.r)) continue;
+      const rt = e.child_rt || 0;
+      ctx.strokeStyle = e.relation === "quote" ? COLORS.edgeQuote : COLORS.edgeReply;
+      ctx.globalAlpha = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
+      ctx.lineWidth = edgeLineWidth(e);
+      ctx.beginPath();
+      const my = (s.py + t.py) / 2;
+      ctx.moveTo(s.px, s.py);
+      ctx.bezierCurveTo(s.px, my, t.px, my, t.px, t.py);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    const showChrome = view.scale >= LABEL_ZOOM;
+
+    // pastilles de fond sous les photos (pendant le chargement) + labels si zoomé
+    for (const n of layoutNodes) {
+      if (!inView(n.px, n.py, n.r + 4)) continue;
+      ctx.beginPath();
+      ctx.arc(n.px, n.py, n.r, 0, Math.PI * 2);
+      ctx.fillStyle = nodeColor(n.relation);
+      ctx.globalAlpha = 0.35;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      if (showChrome) {
+        ctx.fillStyle = "rgba(210,220,230,0.9)";
+        ctx.font = `${Math.max(9, 11 / view.scale)}px sans-serif`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        ctx.fillText("@" + (n.author || "").slice(0, 18), n.px + n.r + 7, n.py - 3);
+      }
+    }
+    // trait parent → nœud survolé
+    if (hoverId && hoverParentId) {
+      const a = layoutNodes.find((n) => n.id === hoverParentId);
+      const b = layoutNodes.find((n) => n.id === hoverId);
+      if (a && b) {
+        ctx.strokeStyle = "rgba(255, 220, 120, 0.85)";
+        ctx.lineWidth = 2.2 / view.scale;
+        ctx.setLineDash([6 / view.scale, 4 / view.scale]);
+        ctx.beginPath();
+        const my = (a.py + b.py) / 2;
+        ctx.moveTo(a.px, a.py);
+        ctx.bezierCurveTo(a.px, my, b.px, my, b.px, b.py);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // pastilles +N / − uniquement assez zoomé (sinon on lit d'abord les tailles)
+    if (showChrome) {
+      for (const h of expandHits) {
+        ctx.beginPath();
+        ctx.arc(h.x, h.y, h.r, 0, Math.PI * 2);
+        ctx.fillStyle = COLORS.expand;
+        ctx.fill();
+        ctx.strokeStyle = COLORS.expandStroke;
+        ctx.lineWidth = 1.5 / view.scale;
+        ctx.stroke();
+        ctx.fillStyle = "#d7e9ff";
+        ctx.font = `bold ${Math.max(9, 10 / view.scale)}px sans-serif`;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        const label = h.mode === "close" || h.n < 0
+          ? "−"
+          : (h.mode === "more" ? "+" + (h.n > 99 ? "99" : h.n) : (h.n > 99 ? "99+" : "+" + h.n));
+        const tw = ctx.measureText(label).width;
+        ctx.fillText(label, h.x - tw / 2, h.y + 3.5);
+      }
+    }
+
+    ctx.restore();
+    drawFixedTimeBar(cssW, cssH);
+    syncAvatarLayer();
+  }
+
+  /** Barre temps fixe à gauche : graduations du viewport (suit pan/zoom). */
+  function drawFixedTimeBar(cssW, cssH) {
+    if (!layoutNodes.length || layoutNodes._tMin == null) return;
+    const byTime = layoutNodes.slice().sort((a, b) => a.t - b.t);
+    function yAtTime(ts) {
+      if (!byTime.length) return PAD_T;
+      if (ts <= byTime[0].t) return byTime[0].py;
+      if (ts >= byTime[byTime.length - 1].t) return byTime[byTime.length - 1].py;
+      let lo = 0;
+      let hi = byTime.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (byTime[mid].t <= ts) lo = mid;
+        else hi = mid;
+      }
+      const a = byTime[lo];
+      const b = byTime[hi];
+      const den = Math.max(b.t - a.t, 1);
+      return a.py + ((ts - a.t) / den) * (b.py - a.py);
+    }
+    function timeAtY(wy) {
+      if (!byTime.length) return layoutNodes._tMin;
+      if (wy <= byTime[0].py) return byTime[0].t;
+      if (wy >= byTime[byTime.length - 1].py) return byTime[byTime.length - 1].t;
+      let lo = 0;
+      let hi = byTime.length - 1;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (byTime[mid].py <= wy) lo = mid;
+        else hi = mid;
+      }
+      const a = byTime[lo];
+      const b = byTime[hi];
+      const den = Math.max(b.py - a.py, 1e-6);
+      return a.t + ((wy - a.py) / den) * (b.t - a.t);
+    }
+
+    const barW = 78;
+    ctx.fillStyle = "rgba(12, 16, 21, 0.88)";
+    ctx.fillRect(0, 0, barW, cssH);
+    ctx.strokeStyle = "rgba(139,154,171,0.55)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(barW - 0.5, 0);
+    ctx.lineTo(barW - 0.5, cssH);
+    ctx.stroke();
+
+    const yTopW = (0 - view.ty) / view.scale;
+    const yBotW = (cssH - view.ty) / view.scale;
+    const tVis0 = timeAtY(Math.min(yTopW, yBotW));
+    const tVis1 = timeAtY(Math.max(yTopW, yBotW));
+    const visH = Math.max((tVis1 - tVis0) / 3600, 0.05);
+    let stepSec;
+    if (visH <= 6) stepSec = 3600;
+    else if (visH <= 24) stepSec = 3 * 3600;
+    else if (visH <= 72) stepSec = 6 * 3600;
+    else if (visH <= 24 * 14) stepSec = 86400;
+    else if (visH <= 24 * 90) stepSec = 7 * 86400;
+    else stepSec = 30 * 86400;
+
+    ctx.fillStyle = "rgba(180,194,210,0.95)";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    const firstTick = Math.ceil(tVis0 / stepSec) * stepSec;
+    let lastSy = -999;
+    const minGapPx = 16;
+    for (let ts = firstTick; ts <= tVis1 + 1; ts += stepSec) {
+      const wy = yAtTime(ts);
+      const sy = wy * view.scale + view.ty;
+      if (sy < 8 || sy > cssH - 8) continue;
+      if (Math.abs(sy - lastSy) < minGapPx) continue;
+      lastSy = sy;
+      ctx.strokeStyle = "rgba(139,154,171,0.7)";
+      ctx.beginPath();
+      ctx.moveTo(barW - 8, sy);
+      ctx.lineTo(barW - 1, sy);
+      ctx.stroke();
+      const d = new Date(ts * 1000);
+      const label = visH <= 72
+        ? d.toLocaleString("fr-FR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+        : d.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: visH > 24 * 120 ? "2-digit" : undefined });
+      ctx.fillText(label, barW - 10, sy);
+    }
+    ctx.save();
+    ctx.translate(11, cssH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(139,154,171,0.9)";
+    ctx.font = "10px sans-serif";
+    ctx.fillText("temps →", 0, 0);
+    ctx.restore();
+  }
+
+  function showDetail(n) {
+    if (!n) return;
+    selectedId = n.id;
+    el.detailTitle.textContent = `@${n.author || "?"} · ${n.relation}`;
+    const badge = `<span class="badge ${n.relation}">${n.relation}</span>`;
+    const url = `https://x.com/i/web/status/${n.id}`;
+    const kids = filteredChildren(n.id).length;
+    const hidden = hiddenDescendantCount(n.id);
+    const more = hiddenSiblingCount(n.id);
+    const unloadedDeep = n.relation === "ancre" && !FOREST.trees[n.id] && (n.subtree_size || 1) > 1
+      ? (n.subtree_size - 1) : 0;
+    const canToggle = kids > 0 || hidden > 0 || unloadedDeep > 0 || expanded.has(n.id);
+    let toggleLabel = "";
+    if (!expanded.has(n.id) && (kids > 0 || unloadedDeep > 0)) {
+      const total = kids || unloadedDeep;
+      toggleLabel = `Déplier (${Math.min(CHILD_CAP_DEFAULT, total)} sur ${total})`;
+    } else if (more > 0) toggleLabel = `Afficher +${Math.min(CHILD_CAP_STEP, more)} enfants`;
+    else if (expanded.has(n.id)) toggleLabel = "Replier les enfants (1er niveau)";
+    const canExpandDeep = kids > 0 || hidden > 0 || unloadedDeep > 0;
+    el.detailBody.innerHTML = `
+      ${badge}
+      <div class="detail-actions">
+        ${canToggle && toggleLabel ? `<button type="button" class="tb-btn" id="btnToggleNode">${toggleLabel}</button>` : ""}
+        ${canExpandDeep ? `<button type="button" class="tb-btn" id="btnExpandDeep" title="Ouvre tout le sous-arbre, tous degrés">Déplier tous les enfants</button>` : ""}
+        <a href="${url}" target="_blank" rel="noopener">Ouvrir sur X</a>
+      </div>
+      <div class="post-text">${escapeHtml(n.text || "")}</div>
+      <dl class="kv">
+        <dt>Date</dt><dd>${fmtDate(n.iso)}</dd>
+        <dt>Retweets</dt><dd>${fmtNum(n.rt)}</dd>
+        <dt>Réponses / quotes</dt><dd>${fmtNum(n.replies)} / ${fmtNum(n.quotes)}</dd>
+        <dt>Likes</dt><dd>${fmtNum(n.likes)}</dd>
+        <dt>Profondeur</dt><dd>${n.depth}</dd>
+        <dt>Sous-arbre ΣRT</dt><dd>${fmtNum(n.subtree_rt)} (${fmtNum(n.subtree_size)} nœuds)</dd>
+        <dt>Délai depuis racine</dt><dd>${n.dt_root_h} h</dd>
+        <dt>Dans corpus à terme</dt><dd>${n.in_corpus ? "oui" : "non"}</dd>
+        <dt>Enfants filtrés</dt><dd>${kids}${hidden ? ` · ${hidden} cachés` : ""}</dd>
+        <dt>Id</dt><dd>${n.id}</dd>
+      </dl>
+      <p class="hint">
+        Haut = plus ancien, bas = plus récent. Les branches s’écartent horizontalement.
+        Cliquez une pastille <strong>+N</strong> pour déployer sans tout ouvrir d’un coup.
+      </p>`;
+    const btn = document.getElementById("btnToggleNode");
+    if (btn) btn.addEventListener("click", () => {
+      if (!expanded.has(n.id)) toggleExpand(n.id, "open");
+      else if (hiddenSiblingCount(n.id) > 0) toggleExpand(n.id, "more");
+      else toggleExpand(n.id, "close");
+    });
+    const btnDeep = document.getElementById("btnExpandDeep");
+    if (btnDeep) btnDeep.addEventListener("click", () => expandAllChildren(n.id));
+    currentId = rootOf[n.id] || n.id;
+    renderThread(n.id);
+    renderList();
+    draw();
+  }
+
+  // interactions canvas
+  el.cv.addEventListener("pointerdown", (ev) => {
+    dragging = true;
+    dragMoved = false;
+    lastPtr = { x: ev.clientX, y: ev.clientY };
+    el.cv.classList.add("dragging");
+    el.cv.setPointerCapture(ev.pointerId);
+  });
+  el.cv.addEventListener("pointerup", (ev) => {
+    dragging = false;
+    el.cv.classList.remove("dragging");
+    if (dragMoved) return;
+    const w = worldFromEvent(ev);
+    const ex = hitExpand(w.x, w.y);
+    if (ex) {
+      toggleExpand(ex.id, ex.mode);
+      return;
+    }
+    const hit = hitNode(w.x, w.y);
+    if (hit) showDetail(hit);
+  });
+  el.cv.addEventListener("pointermove", (ev) => {
+    if (dragging && lastPtr) {
+      const dx = ev.clientX - lastPtr.x;
+      const dy = ev.clientY - lastPtr.y;
+      if (Math.hypot(dx, dy) > 3) dragMoved = true;
+      view.tx += dx;
+      view.ty += dy;
+      lastPtr = { x: ev.clientX, y: ev.clientY };
+      draw();
+      el.tip.style.display = "none";
+      return;
+    }
+    const w = worldFromEvent(ev);
+    const ex = hitExpand(w.x, w.y);
+    const hit = ex ? byId[ex.id] : hitNode(w.x, w.y);
+    if (hit) {
+      const nextHover = hit.id;
+      const nextParent = parentOf[hit.id] || null;
+      if (nextHover !== hoverId || nextParent !== hoverParentId) {
+        hoverId = nextHover;
+        hoverParentId = nextParent;
+        draw();
+      }
+      showHoverTip(hit, ev, !!ex);
+      el.cv.style.cursor = ex ? "pointer" : "grab";
+    } else {
+      if (hoverId || hoverParentId) {
+        hoverId = null;
+        hoverParentId = null;
+        draw();
+      }
+      el.tip.style.display = "none";
+      el.cv.style.cursor = "grab";
+    }
+  });
+  el.cv.addEventListener("pointerleave", () => {
+    el.tip.style.display = "none";
+    if (hoverId || hoverParentId) {
+      hoverId = null;
+      hoverParentId = null;
+      draw();
+    }
+  });
+
+  function showHoverTip(hit, ev, onExpand) {
+    const rel = hit.relation || "reply";
+    const hid = !expanded.has(hit.id) ? hiddenDescendantCount(hit.id) : 0;
+    const nKids = filteredChildren(hit.id).length;
+    const pid = parentOf[hit.id];
+    const parent = pid ? byId[pid] : null;
+
+    let parentHtml;
+    if (parent) {
+      const prel = parent.relation || "reply";
+      parentHtml = `
+        <div class="ht-parent">
+          <img class="ht-parent-av ${prel}" src="${avatarImgUrl(parent.author)}" alt="" width="36" height="36" />
+          <div class="ht-parent-body">
+            <div class="ht-parent-label">Parent</div>
+            <div class="ht-parent-who">@${escapeHtml(parent.author || "?")}
+              <span class="ht-badge ${prel}" style="margin-left:0.35rem;vertical-align:middle">${escapeHtml(prel)}</span>
+            </div>
+            <div class="ht-parent-meta">${fmtDate(parent.iso)} · RT ${fmtNum(parent.rt)} · ♥ ${fmtNum(parent.likes)}</div>
+            <div class="ht-parent-text">${escapeHtml(parent.text || "")}</div>
+          </div>
+        </div>`;
+    } else {
+      parentHtml = `<div class="ht-parent root">Racine — pas de parent dans la cascade</div>`;
+    }
+
+    const expandHint = onExpand
+      ? (expanded.has(hit.id)
+        ? `<div class="ht-date" style="padding-bottom:0.35rem">Clic : replier / charger plus</div>`
+        : `<div class="ht-date" style="padding-bottom:0.35rem">Clic pastille : déplier${hid ? ` (+${hid})` : ""}</div>`)
+      : "";
+    el.tip.innerHTML = `
+      <div class="ht-head">
+        <span class="ht-who">@${escapeHtml(hit.author || "?")}</span>
+        <span class="ht-badge ${rel}">${escapeHtml(rel)}</span>
+      </div>
+      <div class="ht-date">${fmtDate(hit.iso)}</div>
+      ${parentHtml}
+      <div class="ht-text">${escapeHtml(hit.text || "—")}</div>
+      <div class="ht-metrics">
+        <div class="ht-metric">
+          <span class="k">Retweets</span>
+          <span class="v">${fmtNum(hit.rt)}</span>
+        </div>
+        <div class="ht-metric">
+          <span class="k">Likes</span>
+          <span class="v">${fmtNum(hit.likes)}</span>
+        </div>
+        <div class="ht-metric">
+          <span class="k">Enfants</span>
+          <span class="v">${fmtNum(nKids)}</span>
+        </div>
+      </div>
+      ${expandHint}`;
+    el.tip.style.display = "block";
+
+    const rect = el.wrap.getBoundingClientRect();
+    const tipW = el.tip.offsetWidth || 360;
+    const tipH = el.tip.offsetHeight || 200;
+    let left = ev.clientX - rect.left + 14;
+    let top = ev.clientY - rect.top + 14;
+    if (left + tipW > rect.width - 8) left = Math.max(8, ev.clientX - rect.left - tipW - 12);
+    if (top + tipH > rect.height - 8) top = Math.max(8, ev.clientY - rect.top - tipH - 12);
+    el.tip.style.left = left + "px";
+    el.tip.style.top = top + "px";
+  }
+  el.cv.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    const rect = el.cv.getBoundingClientRect();
+    const mx = ev.clientX - rect.left;
+    const my = ev.clientY - rect.top;
+    const before = 1 / view.scale;
+    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * (ev.deltaY < 0 ? 1.12 : 1 / 1.12)));
+    const wx = (mx - view.tx) * before;
+    const wy = (my - view.ty) * before;
+    view.scale = next;
+    view.tx = mx - wx * view.scale;
+    view.ty = my - wy * view.scale;
+    draw();
+  }, { passive: false });
+
+  function refreshForest() {
+    layoutVisible();
+    fitView();
+    renderList();
+    updateStats();
+    if (selectedId && byId[selectedId]) showDetail(byId[selectedId]);
+    else draw();
+  }
+
+  el.sortBy.addEventListener("change", () => { renderList(); refreshForest(); });
+  el.search.addEventListener("input", () => { renderList(); refreshForest(); });
+  for (const id of ["showReply", "showQuote", "hideZero", "sizeSubtree"]) {
+    document.getElementById(id).addEventListener("change", refreshForest);
+  }
+
+  document.getElementById("btnCollapse").addEventListener("click", collapseToRoot);
+  document.getElementById("btnExpand1").addEventListener("click", expandOneLevel);
+  document.getElementById("btnExpandAll").addEventListener("click", expandAll);
+
+  window.addEventListener("resize", () => {
+    resize();
+    fitView();
+    draw();
+  });
+
+  buildGlobalMaps();
+  resize();
+  showForest();
+  // précharge max dès l'ouverture (ne bloque pas l'UI)
+  setTimeout(() => { preloadForestTrees(); }, 80);
+})();
+  </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PADMEN — Arbres chronologiques HMPV</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; min-height: 100vh; font-family: "Segoe UI", system-ui, sans-serif;
+      background: #0c1015; color: #e7eef6;
+      display: grid; place-items: center; padding: 2rem;
+    }
+    main { max-width: 36rem; width: 100%; }
+    h1 { font-size: 1.45rem; font-weight: 650; margin: 0 0 0.4rem; }
+    p { color: #8b9aab; line-height: 1.5; margin: 0 0 1.4rem; }
+    a.btn {
+      display: block; text-decoration: none; color: #e7eef6;
+      background: #1a2330; border: 1px solid #2a3542; border-radius: 10px;
+      padding: 1rem 1.15rem; margin-bottom: 0.75rem;
+      transition: border-color .15s, background .15s;
+    }
+    a.btn:hover { border-color: #4a6078; background: #243041; }
+    a.btn strong { display: block; font-size: 1.05rem; color: #6ec6ff; margin-bottom: 0.25rem; }
+    a.btn span { font-size: 0.85rem; color: #8b9aab; }
+    footer { margin-top: 1.5rem; font-size: 0.78rem; color: #5c6b7a; }
+    footer a { color: #8b9aab; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>PADMEN · Arbres chronologiques</h1>
+    <p>Forêt reply/quote HMPV — axe temps, taille ∝ RT, arcs ∝ RT enfant.</p>
+    <a class="btn" href="./full/">
+      <strong>HMPV Full (EN)</strong>
+      <span>Cascade anglaise · lazy-load · ouvrir le viewer</span>
+    </a>
+    <a class="btn" href="./fr/">
+      <strong>HMPV FR</strong>
+      <span>Cascade française · ouvrir le viewer</span>
+    </a>
+    <footer>
+      Données &amp; code :
+      <a href="https://github.com/mshubeco/PADMEN">github.com/mshubeco/PADMEN</a>
+    </footer>
+  </main>
+</body>
+</html>

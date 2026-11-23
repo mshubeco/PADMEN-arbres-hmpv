@@ -1,0 +1,11 @@
+{
+  "lang": "en",
+  "label": "HMPV Full (cascade EN)",
+  "source": "donnees/parquet/cascade_en.parquet",
+  "n_posts": 105956,
+  "n_trees": 35219,
+  "raw_jsonl_note": "posts.jsonl ≈ 941k lignes ; forêt = composante assignée (ancres + descendants liés)",
+  "generated_at": "2026-11-23T14:10:49Z",
+  "trees_path": "trees/",
+  "layout": "lazy trees; x=time lane forest; size=RT"
+}
