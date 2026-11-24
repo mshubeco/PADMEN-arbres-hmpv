@@ -1677,19 +1677,27 @@
   }
 
   /**
-   * overview (défaut après dépliage) : toute la forêt dans l'écran (silhouette).
-   * readable : échelle plancher pour lire un focus / une sélection.
-   * La molette ne descend pas sous l'échelle d'ensemble (évite de « détruire » le visuel).
+   * overview (défaut) : figure globale centrée, avec marge (silhouette).
+   * Molette : dézoom largement sous cette silhouette ; recentrage = bouton / relayout.
    */
-  const MIN_SCALE_HARD = 0.0004;
+  const MIN_SCALE_HARD = 0.00005;
   const MIN_SCALE_READABLE = 0.22;
   const MAX_SCALE = 5;
+  /** Facteur < 1 → plus de marge autour de la silhouette de base */
+  const OVERVIEW_MARGIN = 0.72;
   let overviewScale = MIN_SCALE_READABLE;
+
+  function centerOnContent() {
+    const rect = el.wrap.getBoundingClientRect();
+    if (rect.width < 10 || rect.height < 10) return;
+    view.tx = (rect.width - contentW * view.scale) / 2;
+    view.ty = (rect.height - contentH * view.scale) / 2;
+  }
 
   function fitView(opts = {}) {
     const rect = el.wrap.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
-    const pad = 36;
+    const pad = 28;
     const sx = (rect.width - pad) / Math.max(contentW, 1);
     const sy = (rect.height - pad) / Math.max(contentH, 1);
     const mode = opts.mode || "overview";
@@ -1700,25 +1708,20 @@
         raw = Math.min(sx, sy) * 0.92;
       }
       view.scale = Math.max(MIN_SCALE_READABLE, Math.min(raw, 1.25));
-      view.tx = (rect.width - contentW * view.scale) / 2;
-      const scaledH = contentH * view.scale;
-      view.ty = scaledH <= rect.height - 24
-        ? (rect.height - scaledH) / 2
-        : 20;
+      centerOnContent();
       return;
     }
 
-    // overview : tous les nœuds visibles dans le viewport
-    const raw = Math.min(sx, sy) * 0.92;
+    // overview : toute la figure, centrée, un cran plus dézoomée que le fit serré
+    const raw = Math.min(sx, sy) * OVERVIEW_MARGIN;
     view.scale = Math.max(MIN_SCALE_HARD, Math.min(raw, 1.25));
     overviewScale = view.scale;
-    view.tx = (rect.width - contentW * view.scale) / 2;
-    view.ty = (rect.height - contentH * view.scale) / 2;
+    centerOnContent();
   }
 
   function wheelMinScale() {
-    // autoriser un léger dézoom sous l'ensemble, mais pas l'infini
-    return Math.max(MIN_SCALE_HARD, overviewScale * 0.85);
+    // gros dézoom autorisé sous la silhouette de base
+    return Math.max(MIN_SCALE_HARD, overviewScale * 0.12);
   }
 
   function resetExpansion() {
@@ -2748,7 +2751,7 @@
       fitView({ mode: "overview" });
       draw();
       el.status.textContent =
-        `Vue d'ensemble · ${fmtNum(visibleNodeIds().size)} nœuds · ${fmtNum(layoutEdges.length)} arcs · échelle ${view.scale.toFixed(4)}`;
+        `Figure globale centrée · ${fmtNum(visibleNodeIds().size)} nœuds · ${fmtNum(layoutEdges.length)} arcs · échelle ${view.scale.toFixed(4)}`;
     });
   }
 
