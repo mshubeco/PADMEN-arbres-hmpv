@@ -1576,6 +1576,20 @@
     return h;
   }
 
+  /** Évite Math.min(...arr) / Math.max(...arr) qui plantent sur >~100k éléments. */
+  function minOf(arr, fallback = 0) {
+    if (!arr || !arr.length) return fallback;
+    let m = arr[0];
+    for (let i = 1; i < arr.length; i++) if (arr[i] < m) m = arr[i];
+    return m;
+  }
+  function maxOf(arr, fallback = 0) {
+    if (!arr || !arr.length) return fallback;
+    let m = arr[0];
+    for (let i = 1; i < arr.length; i++) if (arr[i] > m) m = arr[i];
+    return m;
+  }
+
   function allowedChild(node) {
     if (!node) return false;
     if (node.relation === "ancre") return true;
@@ -1766,7 +1780,7 @@
     }
 
     const laneVals = nodes.map((n) => laneOf[n.id] ?? 0);
-    const laneMin = Math.min(...laneVals, 0);
+    const laneMin = Math.min(0, minOf(laneVals, 0));
     // Couloirs un peu plus larges quand beaucoup de RT
     const laneW = rtHeavy ? Math.max(LANE_W, 130) : LANE_W;
 
@@ -1783,8 +1797,8 @@
     layoutNodes._tMax = tMax;
 
     layoutNodes.sort((a, b) => a.py - b.py || a.px - b.px);
-    // Anti-chevauchement X/Y pour tous les nœuds (y compris RT)
-    const collideLimit = 25000;
+    // Anti-chevauchement : plafonné (vue full = trop de nœuds sinon)
+    const collideLimit = 8000;
     if (layoutNodes.length <= collideLimit) {
       for (let i = 0; i < layoutNodes.length; i++) {
         for (let j = i + 1; j < layoutNodes.length; j++) {
@@ -1802,14 +1816,23 @@
       }
     }
 
-    const xs = layoutNodes.map((n) => n.px);
-    const xMin = Math.min(...xs);
+    let xMin = Infinity;
+    let xMaxPx = -Infinity;
+    let yMaxPx = -Infinity;
+    for (let i = 0; i < layoutNodes.length; i++) {
+      const n = layoutNodes[i];
+      if (n.px < xMin) xMin = n.px;
+      if (n.px > xMaxPx) xMaxPx = n.px;
+      if (n.py > yMaxPx) yMaxPx = n.py;
+    }
+    if (!Number.isFinite(xMin)) xMin = PAD_L;
+    if (!Number.isFinite(xMaxPx)) xMaxPx = PAD_L + 400;
+    if (!Number.isFinite(yMaxPx)) yMaxPx = PAD_T + 400;
     if (xMin < PAD_L) {
       const shift = PAD_L - xMin;
       for (const n of layoutNodes) n.px += shift;
+      xMaxPx += shift;
     }
-    const xMaxPx = Math.max(...layoutNodes.map((n) => n.px));
-    const yMaxPx = Math.max(...layoutNodes.map((n) => n.py));
     contentW = Math.max(720, xMaxPx + PAD_R + 40);
     contentH = Math.max(480, yMaxPx + PAD_B + 20);
 
@@ -2211,7 +2234,10 @@
 
   let expandAllRunning = false;
   async function expandAll(opts = {}) {
-    if (expandAllRunning) return;
+    if (expandAllRunning) {
+      // Attendre la fin d'un dépliage concurrent puis relancer
+      while (expandAllRunning) await new Promise((r) => setTimeout(r, 50));
+    }
     expandAllRunning = true;
     const roots = activeRootIds();
     const n = roots.length;
@@ -2282,7 +2308,12 @@
       syncExpandedChildCaps();
       setLoadProgress(0.95, "Mise en page…");
       await new Promise((r) => setTimeout(r, 0));
-      layoutVisible();
+      try {
+        layoutVisible();
+      } catch (layoutErr) {
+        console.error("layoutVisible failed", layoutErr);
+        throw new Error(`Mise en page : ${layoutErr.message || layoutErr}`);
+      }
       updateStats();
       fitView({ mode: "overview" });
       if (viewShowsRetweets()) {
@@ -2297,6 +2328,10 @@
       if (nEdges === 0 && viewShowsChildren()) {
         el.status.textContent += " · aucun arc (données enfants absentes ?)";
       }
+    } catch (err) {
+      console.error("expandAll failed", err);
+      el.status.textContent = `Échec dépliage (${viewLabel}) : ${err.message || err}`;
+      throw err;
     } finally {
       expandAllRunning = false;
       if (ownOverlay) hideLoadOverlay();
@@ -2386,7 +2421,7 @@
     // axe monde (ligne fine) — les dates lisibles sont dans la barre écran fixe après restore
     const axisX = PAD_L - 40;
     const y0 = PAD_T;
-    const y1 = Math.max(...layoutNodes.map((n) => n.py), PAD_T + 40);
+    const y1 = Math.max(maxOf(layoutNodes.map((n) => n.py), PAD_T), PAD_T + 40);
     ctx.strokeStyle = COLORS.axis;
     ctx.lineWidth = 1 / view.scale;
     ctx.beginPath();
