@@ -1616,39 +1616,29 @@
       rootLane[rid] = (i % 2 === 0) ? 0 : 0.45;
     });
 
+    // 1) Layout chronologique des non-RT (ancres / RP / QT)
+    // 2) RT placés en éventail autour du parent (pas sur l'axe temps global —
+    //    sinon arcs kilométriques et silhouette « cassée »)
+    const cascadeNodes = nodes.filter((n) => n.relation !== "retweet");
+    const rtNodes = nodes.filter((n) => n.relation === "retweet");
+
     const laneOf = {};
-    const rtJitter = {};
     for (const rid of roots) {
       laneOf[rid] = rootLane[rid] || 0;
-      const kids = (visChildren[rid] || []).slice();
-      const cascadeHeads = kids.filter((id) => (byId[id] || {}).relation !== "retweet");
-      const rtHeads = kids.filter((id) => (byId[id] || {}).relation === "retweet");
+      const cascadeHeads = (visChildren[rid] || []).filter(
+        (id) => (byId[id] || {}).relation !== "retweet"
+      );
       let left = -1;
       let right = 1;
       const base = laneOf[rid];
-      // RP/QT : vrais couloirs ; RT : restent près du parent (évite largeur × milliers)
       for (let i = 0; i < cascadeHeads.length; i++) {
         const offset = (i % 2 === 0) ? right++ : left--;
         laneOf[cascadeHeads[i]] = base + offset;
       }
-      for (let i = 0; i < rtHeads.length; i++) {
-        laneOf[rtHeads[i]] = base;
-        // léger éventail (pas un paquet resserré sur le tronc)
-        rtJitter[rtHeads[i]] = ((i % 2 === 0) ? 1 : -1) * (18 + (i % 16) * 5);
-      }
     }
-    for (const n of nodes) {
+    for (const n of cascadeNodes) {
       const rid = rootOf[n.id] || n.id;
       if (n.id === rid) continue;
-      if (n.relation === "retweet") {
-        const p = parentOf[n.id];
-        laneOf[n.id] = laneOf[p] != null ? laneOf[p] : (laneOf[rid] || 0);
-        if (rtJitter[n.id] == null) {
-          const h = Math.abs(hashStr(n.id)) % 24;
-          rtJitter[n.id] = ((h % 2 === 0) ? 1 : -1) * (14 + (h % 12) * 4);
-        }
-        continue;
-      }
       const head = branchHead(n.id, rid);
       if (laneOf[head] == null) laneOf[head] = (laneOf[rid] || 0) + 1;
       const depthFromHead = n.id === head
@@ -1658,26 +1648,22 @@
       laneOf[n.id] = laneOf[head] + sign * depthFromHead * 0.35;
     }
 
-    nodes.sort((a, b) => (a.t - b.t) || a.id.localeCompare(b.id));
-    const tMin = nodes[0].t;
-    const tMax = nodes[nodes.length - 1].t;
+    cascadeNodes.sort((a, b) => (a.t - b.t) || a.id.localeCompare(b.id));
+    const tMin = cascadeNodes.length ? cascadeNodes[0].t : (nodes[0].t || 0);
+    const tMax = cascadeNodes.length ? cascadeNodes[cascadeNodes.length - 1].t : tMin + 1;
     const tSpan = Math.max(tMax - tMin, 1);
     const spanH = tSpan / 3600;
-    // Espacement lisible (comme avant) — ne plus écraser quand il y a beaucoup de RT
     const pxPerHour = spanH <= 6 ? 90 : spanH <= 24 ? 36 : spanH <= 168 ? 12 : spanH <= 720 ? 5 : 2.2;
     const minGap = 20;
-    // Plafond d'écart Y entre deux nœuds successifs : compresse les trous d'inactivité
-    // (ex. janv. → juin) sans perdre l'ordre chronologique
     const maxEmptyGap = 110;
-    const timeHeight = Math.max(nodes.length * minGap, spanH * pxPerHour, 420);
+    const timeHeight = Math.max(Math.max(cascadeNodes.length, 1) * minGap, spanH * pxPerHour, 420);
 
-    // Y = temps, borné : ni trop collé, ni gouffre vide entre deux vagues
     const yPix = {};
-    for (let i = 0; i < nodes.length; i++) {
-      const n = nodes[i];
+    for (let i = 0; i < cascadeNodes.length; i++) {
+      const n = cascadeNodes[i];
       let y = ((n.t - tMin) / tSpan) * timeHeight;
       if (i > 0) {
-        const prev = nodes[i - 1];
+        const prev = cascadeNodes[i - 1];
         const prevY = yPix[prev.id];
         if (y < prevY + minGap) y = prevY + minGap;
         else if (y > prevY + maxEmptyGap) y = prevY + maxEmptyGap;
@@ -1685,26 +1671,55 @@
       yPix[n.id] = y;
     }
 
-    const laneVals = nodes.map((n) => laneOf[n.id] ?? 0);
-    const laneMin = Math.min(...laneVals, 0);
+    const laneVals = cascadeNodes.map((n) => laneOf[n.id] ?? 0);
+    const laneMin = laneVals.length ? Math.min(...laneVals, 0) : 0;
 
-    layoutNodes = nodes.map((n) => {
+    layoutNodes = cascadeNodes.map((n) => {
       const lane = laneOf[n.id] ?? 0;
-      const jitter = n.relation === "retweet" ? (rtJitter[n.id] || 0) : 0;
-      const px = PAD_L + (lane - laneMin) * LANE_W + 280 + jitter;
-      const py = PAD_T + yPix[n.id];
+      const px = PAD_L + (lane - laneMin) * LANE_W + 280;
+      const py = PAD_T + (yPix[n.id] || 0);
       return { ...n, px, py, r: radiusOf(n), lane };
     });
+
+    // Éventail RT autour de chaque parent déjà positionné
+    const posCascade = Object.fromEntries(layoutNodes.map((n) => [n.id, n]));
+    const rtsByParent = {};
+    for (const n of rtNodes) {
+      const p = parentOf[n.id] || n.racine_id || "";
+      if (!rtsByParent[p]) rtsByParent[p] = [];
+      rtsByParent[p].push(n);
+    }
+    for (const pid of Object.keys(rtsByParent)) {
+      const bunch = rtsByParent[pid].slice().sort((a, b) => (a.t - b.t) || a.id.localeCompare(b.id));
+      const parent = posCascade[pid];
+      const baseX = parent ? parent.px : PAD_L + 280;
+      const baseY = parent ? parent.py : PAD_T;
+      const cols = Math.min(10, Math.max(3, Math.ceil(Math.sqrt(bunch.length))));
+      for (let i = 0; i < bunch.length; i++) {
+        const n = bunch[i];
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const px = baseX + (col - (cols - 1) / 2) * 22;
+        const py = baseY + 16 + row * 14;
+        const laid = { ...n, px, py, r: radiusOf(n), lane: laneOf[pid] ?? 0 };
+        layoutNodes.push(laid);
+        posCascade[n.id] = laid;
+      }
+    }
+
     layoutNodes._timeHeight = timeHeight;
     layoutNodes._spanH = spanH;
+    layoutNodes._tMin = tMin;
+    layoutNodes._tMax = tMax;
 
     layoutNodes.sort((a, b) => a.py - b.py || a.px - b.px);
-    // Anti-chevauchement X : trop coûteux au-delà de ~12k nœuds (forêt complète)
-    if (layoutNodes.length <= 12000) {
-      for (let i = 0; i < layoutNodes.length; i++) {
-        for (let j = i + 1; j < layoutNodes.length; j++) {
-          const a = layoutNodes[i];
-          const b = layoutNodes[j];
+    // Anti-chevauchement X : seulement non-RT (les RT sont déjà en grille)
+    const nonRtLayout = layoutNodes.filter((n) => n.relation !== "retweet");
+    if (nonRtLayout.length <= 12000) {
+      for (let i = 0; i < nonRtLayout.length; i++) {
+        for (let j = i + 1; j < nonRtLayout.length; j++) {
+          const a = nonRtLayout[i];
+          const b = nonRtLayout[j];
           if (b.py - a.py > Math.max(a.r + b.r + 8, 32)) break;
           const minDx = a.r + b.r + 16;
           const dx = b.px - a.px;
@@ -2129,32 +2144,43 @@
       rp_quote: "Reply + Quote",
       full: "RT + Reply + Quote",
     })[viewMode] || viewMode;
+    const ownOverlay = opts.ownOverlay !== false;
     if (el.btnExpandAll) {
       el.btnExpandAll.disabled = true;
       el.btnExpandAll.classList.add("loading");
       el.btnExpandAll.textContent = "Dépliage…";
     }
-    showLoadOverlay(
-      opts.title || `Dépliage · ${viewLabel}`,
-      `Chargement de ${fmtNum(n)} arbre(s)…`
-    );
+    if (ownOverlay) {
+      showLoadOverlay(
+        opts.title || `Dépliage · ${viewLabel}`,
+        `Préparation · ${fmtNum(n)} originale(s)…`
+      );
+    }
     try {
       if (viewShowsRetweets()) {
-        setLoadProgress(0.02, "Index retweets…");
+        setLoadProgress(0.05, "Index retweets…");
         await ensureRtIndex({ showUi: false });
         injectRetweetsForLoadedNodes();
       }
-      await ensureTreesMany(roots, "Chargement des cascades", {
-        concurrency: 40,
-        onProgress: (frac, done, total, msg) => {
-          setLoadProgress(
-            0.05 + frac * 0.75,
-            msg || `Chargement ${fmtNum(done)} / ${fmtNum(total)}`
-          );
-        },
-      });
-      if (viewShowsRetweets()) injectRetweetsForLoadedNodes();
-      setLoadProgress(0.82, `Ouverture des nœuds (${fmtNum(n)} arbres)…`);
+      // RT only : pas besoin des JSON cascades (RP/QT) — uniquement index RT
+      const needTrees = viewShowsReplies() || viewShowsQuotes();
+      if (needTrees) {
+        await ensureTreesMany(roots, "Chargement des cascades", {
+          concurrency: 40,
+          onProgress: (frac, done, total, msg) => {
+            setLoadProgress(
+              0.08 + frac * 0.7,
+              msg || `Chargement ${fmtNum(done)} / ${fmtNum(total)}`
+            );
+          },
+        });
+        if (viewShowsRetweets()) injectRetweetsForLoadedNodes();
+      } else {
+        setLoadProgress(0.55, "Injection des retweets sur les originales…");
+        injectRetweetsForLoadedNodes();
+      }
+      setLoadProgress(0.82, `Ouverture des nœuds (${fmtNum(n)})…`);
+      resetExpansion();
       let i = 0;
       let edgeCount = 0;
       for (const rootId of roots) {
@@ -2171,32 +2197,32 @@
         if (i % 80 === 0 || i === n) {
           setLoadProgress(
             0.82 + 0.12 * (i / Math.max(n, 1)),
-            `Dépliage structure ${fmtNum(i)} / ${fmtNum(n)} · ${fmtNum(edgeCount)} liens…`
+            `Dépliage ${fmtNum(i)} / ${fmtNum(n)} · ${fmtNum(edgeCount)} liens…`
           );
           await new Promise((r) => setTimeout(r, 0));
         }
       }
       syncExpandedChildCaps();
-      setLoadProgress(0.96, "Mise en page…");
+      setLoadProgress(0.95, "Mise en page…");
+      await new Promise((r) => setTimeout(r, 0));
       layoutVisible();
       updateStats();
       fitView({ mode: "overview" });
-      // Vue full/RT : un cran de dézoom + recentrage pour garder la silhouette navigable
       if (viewShowsRetweets()) {
-        view.scale = Math.max(wheelMinScale(), view.scale * 0.82);
+        view.scale = Math.max(wheelMinScale(), view.scale * 0.85);
         centerOnContent();
       }
       draw();
       const vis = visibleNodeIds().size;
       const nEdges = layoutEdges.length;
       el.status.textContent =
-        `Déplié · ${viewLabel} · ${fmtNum(n)} arbres · ${fmtNum(vis)} nœuds · ${fmtNum(nEdges)} arcs · figure centrée (échelle ${view.scale.toFixed(4)})`;
+        `Déplié · ${viewLabel} · ${fmtNum(n)} arbres · ${fmtNum(vis)} nœuds · ${fmtNum(nEdges)} arcs · échelle ${view.scale.toFixed(4)}`;
       if (nEdges === 0 && viewShowsChildren()) {
         el.status.textContent += " · aucun arc (données enfants absentes ?)";
       }
     } finally {
       expandAllRunning = false;
-      hideLoadOverlay();
+      if (ownOverlay) hideLoadOverlay();
       if (el.btnExpandAll) {
         el.btnExpandAll.disabled = false;
         el.btnExpandAll.classList.remove("loading");
@@ -2817,36 +2843,56 @@
     syncColorModeButtons();
     draw();
   });
+  let viewSwitchRunning = false;
   document.getElementById("viewModeRow").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-view-mode]");
     if (!btn) return;
     const next = btn.getAttribute("data-view-mode") || "rp_quote";
-    if (next === viewMode) return;
-    viewMode = next;
-    syncViewModeButtons();
-    // Ne pas vider l'expansion : les enfants restent filtrés par vue.
-    if (viewShowsRetweets()) {
-      await ensureRtIndex({ showUi: true });
-      injectRetweetsForLoadedNodes();
-      syncExpandedChildCaps();
-    }
-    if (viewShowsChildren()) {
-      // RT / full : toujours redéplier + recentrer la silhouette (sinon fond noir / hors cadre)
-      if (viewShowsRetweets() || expanded.size === 0) {
-        await expandAll({ title: `Vue ${next} · chargement` });
-      } else {
-        syncExpandedChildCaps();
-        let anyChild = false;
-        for (const id of expanded) {
-          if (filteredChildren(id).length) { anyChild = true; break; }
-        }
-        if (!anyChild) await expandAll();
-        else refreshForest();
+    if (next === viewMode || viewSwitchRunning || expandAllRunning) return;
+    viewSwitchRunning = true;
+    const labels = {
+      base: "Base · sans liens",
+      rt: "RT only",
+      rp_quote: "Reply + Quote",
+      full: "RT + Reply + Quote",
+    };
+    showLoadOverlay(`Changement de vue`, labels[next] || next);
+    setLoadProgress(0.04, "Préparation…");
+    await new Promise((r) => setTimeout(r, 40));
+    try {
+      viewMode = next;
+      syncViewModeButtons();
+      setSelectedNode(null);
+      resetExpansion();
+      if (viewShowsRetweets()) {
+        setLoadProgress(0.12, "Chargement index retweets…");
+        await ensureRtIndex({ showUi: false });
+        injectRetweetsForLoadedNodes();
       }
-    } else {
-      refreshForest();
+      if (viewShowsChildren()) {
+        setLoadProgress(0.2, `Construction · ${labels[next]}…`);
+        await expandAll({
+          title: `Vue · ${labels[next]}`,
+          ownOverlay: false,
+        });
+        setLoadProgress(1, "Terminé");
+      } else {
+        setLoadProgress(0.6, "Mise en page des originales…");
+        layoutVisible();
+        fitView({ mode: "overview" });
+        renderList();
+        updateStats();
+        draw();
+        setLoadProgress(1, "Terminé");
+      }
+      updateFilterStats();
+    } catch (err) {
+      console.error(err);
+      el.status.textContent = `Échec changement de vue : ${err.message || err}`;
+    } finally {
+      hideLoadOverlay();
+      viewSwitchRunning = false;
     }
-    updateFilterStats();
   });
 
   document.getElementById("btnExpand1").addEventListener("click", expandOneLevel);
