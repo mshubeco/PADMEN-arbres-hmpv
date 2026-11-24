@@ -675,20 +675,14 @@
   }
   FOREST.trees = FOREST.trees || {};
 
-  /** Masquer originales isolées (n=1) avec RT racine < 10 */
-  const MIN_ISOLATED_ROOT_RT = 10;
+  /** Toutes les originales de l'index (plus de filtre isolées RT<10). */
   const indexRawN = (FOREST.index || []).length;
-  FOREST.index = (FOREST.index || []).filter((r) => {
-    const n = r.n_nodes || 1;
-    const rt = r.root_rt || 0;
-    if (n <= 1 && rt < MIN_ISOLATED_ROOT_RT) return false;
-    return true;
-  });
+  FOREST.index = FOREST.index || [];
 
   const meta = FOREST.meta;
   document.getElementById("headerMeta").textContent =
-    `${meta.label || "HMPV Full"} · ${FOREST.index.length.toLocaleString("fr-FR")} affichées / ${indexRawN.toLocaleString("fr-FR")}` +
-    ` (hors isolées RT<${MIN_ISOLATED_ROOT_RT}) · ${meta.generated_at}`;
+    `${meta.label || "HMPV Full"} · ${FOREST.index.length.toLocaleString("fr-FR")} originales` +
+    ` · ${meta.generated_at}`;
 
   const el = {
     list: document.getElementById("treeList"),
@@ -1344,10 +1338,10 @@
   }
 
   function radiusOf(n) {
-    // Nœuds retweet : toujours compacts (sinon la vue full explose)
+    // Nœuds retweet : compacts mais lisibles
     if (n && n.relation === "retweet") {
       const v = Math.max(0, engagementOf(n));
-      return Math.min(2.2 + 0.35 * Math.sqrt(v), 8);
+      return Math.min(3.2 + 0.45 * Math.sqrt(v), 12);
     }
     const v = Math.max(0, sizeScoreOf(n));
     const strong = viewEmphasizesRt();
@@ -1638,7 +1632,8 @@
       }
       for (let i = 0; i < rtHeads.length; i++) {
         laneOf[rtHeads[i]] = base;
-        rtJitter[rtHeads[i]] = ((i % 2 === 0) ? 1 : -1) * (10 + (i % 12) * 3);
+        // léger éventail (pas un paquet resserré sur le tronc)
+        rtJitter[rtHeads[i]] = ((i % 2 === 0) ? 1 : -1) * (18 + (i % 16) * 5);
       }
     }
     for (const n of nodes) {
@@ -1649,7 +1644,7 @@
         laneOf[n.id] = laneOf[p] != null ? laneOf[p] : (laneOf[rid] || 0);
         if (rtJitter[n.id] == null) {
           const h = Math.abs(hashStr(n.id)) % 24;
-          rtJitter[n.id] = ((h % 2 === 0) ? 1 : -1) * (8 + (h % 10) * 2.5);
+          rtJitter[n.id] = ((h % 2 === 0) ? 1 : -1) * (14 + (h % 12) * 4);
         }
         continue;
       }
@@ -1667,20 +1662,24 @@
     const tMax = nodes[nodes.length - 1].t;
     const tSpan = Math.max(tMax - tMin, 1);
     const spanH = tSpan / 3600;
-    // Hauteur : densifier si forêt + RT (sinon canvas gigantesque / fond noir)
-    const pxPerHour = spanH <= 6 ? 90 : spanH <= 24 ? 36 : spanH <= 168 ? 10 : spanH <= 720 ? 3.5 : 1.2;
-    const nVis = nodes.length;
-    const minGap = nVis > 80000 ? 3.2 : nVis > 40000 ? 5 : nVis > 20000 ? 8 : nVis > 10000 ? 12 : 22;
+    // Espacement lisible (comme avant) — ne plus écraser quand il y a beaucoup de RT
+    const pxPerHour = spanH <= 6 ? 90 : spanH <= 24 ? 36 : spanH <= 168 ? 12 : spanH <= 720 ? 5 : 2.2;
+    const minGap = 20;
+    // Plafond d'écart Y entre deux nœuds successifs : compresse les trous d'inactivité
+    // (ex. janv. → juin) sans perdre l'ordre chronologique
+    const maxEmptyGap = 110;
     const timeHeight = Math.max(nodes.length * minGap, spanH * pxPerHour, 420);
 
-    // Position Y = temps proportionnel, puis poussée pour respecter un écart mini
+    // Y = temps, borné : ni trop collé, ni gouffre vide entre deux vagues
     const yPix = {};
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
       let y = ((n.t - tMin) / tSpan) * timeHeight;
       if (i > 0) {
         const prev = nodes[i - 1];
-        y = Math.max(y, yPix[prev.id] + minGap);
+        const prevY = yPix[prev.id];
+        if (y < prevY + minGap) y = prevY + minGap;
+        else if (y > prevY + maxEmptyGap) y = prevY + maxEmptyGap;
       }
       yPix[n.id] = y;
     }
