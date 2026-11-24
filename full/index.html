@@ -629,8 +629,9 @@
       <span id="treeStats"></span>
       <span class="sep"></span>
       <button type="button" class="tb-btn" id="btnExpand1" title="Ouvrir un niveau de plus">+1 niveau</button>
+      <button type="button" class="tb-btn" id="btnFitAll" title="Recadrer toute la forêt dans l'écran">Vue d'ensemble</button>
       <span class="sep"></span>
-      <span>Toutes les originales · pastille <strong>+N</strong> = déployer la cascade · ↓ temps</span>
+      <span>Panoramique = tous les nœuds · molette = zoom · pastille <strong>+N</strong> · ↓ temps</span>
     </div>
     <div id="canvasWrap">
       <canvas id="cv"></canvas>
@@ -1676,33 +1677,48 @@
   }
 
   /**
-   * Ne jamais « tout faire rentrer » en hauteur : une forêt chronologique
-   * fait des centaines de kpx → échelle microscopique = nœuds invisibles.
-   * On cadre surtout sur la largeur, échelle lisible, ancre en haut.
+   * overview (défaut après dépliage) : toute la forêt dans l'écran (silhouette).
+   * readable : échelle plancher pour lire un focus / une sélection.
+   * La molette ne descend pas sous l'échelle d'ensemble (évite de « détruire » le visuel).
    */
-  const MIN_SCALE = 0.22;
+  const MIN_SCALE_HARD = 0.0004;
+  const MIN_SCALE_READABLE = 0.22;
   const MAX_SCALE = 5;
+  let overviewScale = MIN_SCALE_READABLE;
 
-  function fitView() {
+  function fitView(opts = {}) {
     const rect = el.wrap.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
-    const pad = 40;
+    const pad = 36;
     const sx = (rect.width - pad) / Math.max(contentW, 1);
     const sy = (rect.height - pad) / Math.max(contentH, 1);
-    // Priorité largeur ; n'utiliser le fit hauteur que s'il reste lisible
-    let raw = Math.min(sx, 1.15) * 0.94;
-    if (sy >= MIN_SCALE && contentH * raw <= rect.height - pad) {
-      raw = Math.min(sx, sy) * 0.92;
+    const mode = opts.mode || "overview";
+
+    if (mode === "readable") {
+      let raw = Math.min(sx, 1.15) * 0.94;
+      if (sy >= MIN_SCALE_READABLE && contentH * raw <= rect.height - pad) {
+        raw = Math.min(sx, sy) * 0.92;
+      }
+      view.scale = Math.max(MIN_SCALE_READABLE, Math.min(raw, 1.25));
+      view.tx = (rect.width - contentW * view.scale) / 2;
+      const scaledH = contentH * view.scale;
+      view.ty = scaledH <= rect.height - 24
+        ? (rect.height - scaledH) / 2
+        : 20;
+      return;
     }
-    view.scale = Math.max(MIN_SCALE, Math.min(raw, 1.25));
+
+    // overview : tous les nœuds visibles dans le viewport
+    const raw = Math.min(sx, sy) * 0.92;
+    view.scale = Math.max(MIN_SCALE_HARD, Math.min(raw, 1.25));
+    overviewScale = view.scale;
     view.tx = (rect.width - contentW * view.scale) / 2;
-    const scaledH = contentH * view.scale;
-    if (scaledH <= rect.height - 24) {
-      view.ty = (rect.height - scaledH) / 2;
-    } else {
-      // début de chronologie en haut — pan vertical pour le reste
-      view.ty = 20;
-    }
+    view.ty = (rect.height - contentH * view.scale) / 2;
+  }
+
+  function wheelMinScale() {
+    // autoriser un léger dézoom sous l'ensemble, mais pas l'infini
+    return Math.max(MIN_SCALE_HARD, overviewScale * 0.85);
   }
 
   function resetExpansion() {
@@ -2067,7 +2083,7 @@
       const vis = visibleNodeIds().size;
       const nEdges = layoutEdges.length;
       el.status.textContent =
-        `Déplié · ${viewLabel} · ${fmtNum(n)} arbres · ${fmtNum(vis)} nœuds · ${fmtNum(nEdges)} arcs · échelle ${view.scale.toFixed(2)}`;
+        `Déplié · ${viewLabel} · ${fmtNum(n)} arbres · ${fmtNum(vis)} nœuds · ${fmtNum(nEdges)} arcs · vue d'ensemble (échelle ${view.scale.toFixed(4)})`;
       if (nEdges === 0 && viewShowsChildren()) {
         el.status.textContent += " · aucun arc (données enfants absentes ?)";
       }
@@ -2652,7 +2668,7 @@
     const mx = ev.clientX - rect.left;
     const my = ev.clientY - rect.top;
     const factor = ev.deltaY < 0 ? 1.08 : 1 / 1.08;
-    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
+    const next = Math.min(MAX_SCALE, Math.max(wheelMinScale(), view.scale * factor));
     if (Math.abs(next - view.scale) < 1e-9) return;
     const wx = (mx - view.tx) / view.scale;
     const wy = (my - view.ty) / view.scale;
@@ -2726,10 +2742,19 @@
   document.getElementById("btnExpand1").addEventListener("click", expandOneLevel);
   el.btnExpandAll.addEventListener("click", () => expandAll());
   el.btnCollapseAll.addEventListener("click", collapseAll);
+  const btnFitAll = document.getElementById("btnFitAll");
+  if (btnFitAll) {
+    btnFitAll.addEventListener("click", () => {
+      fitView({ mode: "overview" });
+      draw();
+      el.status.textContent =
+        `Vue d'ensemble · ${fmtNum(visibleNodeIds().size)} nœuds · ${fmtNum(layoutEdges.length)} arcs · échelle ${view.scale.toFixed(4)}`;
+    });
+  }
 
   window.addEventListener("resize", () => {
     resize();
-    fitView();
+    fitView({ mode: "overview" });
     draw();
   });
 
