@@ -582,7 +582,7 @@
             <button type="button" class="mode-btn" data-color-mode="age">Âge compte</button>
             <button type="button" class="mode-btn" data-color-mode="lang">Langue</button>
           </div>
-          <p class="hint" id="colorModeHint">Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.</p>
+          <p class="hint" id="colorModeHint">Ancre / réponse / citation / RT. Valable sur toutes les vues · arcs = couleur de l’enfant.</p>
         </div>
         <div>
           <label for="sortBy">Trier les arbres</label>
@@ -1041,8 +1041,44 @@
     return lerpRgb(lo.rgb, hi.rgb, (t - lo.t) / span);
   }
 
+  function yearFromSnowflakeId(id) {
+    try {
+      const n = BigInt(String(id || ""));
+      if (n < (1n << 32n)) return 2010;
+      const ms = Number((n >> 22n) + 1288834974657n);
+      return new Date(ms).getUTCFullYear();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function resolveLangCode(node) {
+    if (!node || !overlays) return null;
+    const key = authorKeyOf(node);
+    let code = node.lang || null;
+    if (!code && overlays.lang_post) code = overlays.lang_post[node.id] || null;
+    // RT : langue du contenu relayé si le RT n'a pas de langue propre
+    if (!code && node.relation === "retweet") {
+      const pid = parentOf[node.id] || node.parent_id;
+      if (pid && overlays.lang_post) code = overlays.lang_post[pid] || null;
+      const parent = pid ? byId[pid] : null;
+      if (!code && parent) {
+        code = parent.lang || null;
+        if (!code && overlays.lang) code = overlays.lang[authorKeyOf(parent)] || null;
+      }
+    }
+    if (!code && overlays.lang) code = overlays.lang[key] || null;
+    if (!code) return null;
+    code = String(code).toLowerCase();
+    if (code === "eng") code = "en";
+    if (code === "fra" || code === "fre") code = "fr";
+    if (["zxx", "qme", "qam", "qht", "art"].includes(code)) code = "und";
+    return code;
+  }
+
   function colorForNode(node) {
     if (!node) return COLORS.unknown;
+    // Même résolution sur Base / RT / RP+QT / full
     if (colorMode === "type") return typeColor(node.relation);
     const key = authorKeyOf(node);
     if (colorMode === "louvain") {
@@ -1060,19 +1096,15 @@
       return rgbCss(rgb);
     }
     if (colorMode === "age") {
-      if (!overlays || !overlays.age_year) return COLORS.unknown;
-      const year = overlays.age_year[key];
+      if (!overlays) return COLORS.unknown;
+      let year = overlays.age_year ? overlays.age_year[key] : null;
+      if (year == null && node.author_id) year = yearFromSnowflakeId(node.author_id);
       if (year == null) return COLORS.unknown;
       return rgbCss(ageColorRgb(year));
     }
     if (colorMode === "lang") {
-      if (!overlays) return COLORS.unknown;
-      let code = (node && node.lang) || (overlays.lang_post && overlays.lang_post[node.id]) || null;
-      if (!code) code = overlays.lang && overlays.lang[key];
+      const code = resolveLangCode(node);
       if (!code) return COLORS.unknown;
-      code = String(code).toLowerCase();
-      if (code === "eng") code = "en";
-      if (code === "fra" || code === "fre") code = "fr";
       const rgb = (overlays.lang_color && overlays.lang_color[code]) || overlays.unknown_color;
       return rgbCss(rgb);
     }
@@ -1080,10 +1112,12 @@
   }
 
   function colorForEdge(edge) {
-    const node = edge.t || null;
+    // Toujours la couleur du nœud enfant (cohérent sur toutes les vues / modes)
+    const node = edge.t || byId[edge.target] || null;
     if (colorMode === "type") {
       if (edge.relation === "quote") return COLORS.edgeQuote;
       if (edge.relation === "retweet") return COLORS.edgeRetweet;
+      if (edge.relation === "ancre") return COLORS.ancre;
       return COLORS.edgeReply;
     }
     const css = colorForNode(node);
@@ -1120,11 +1154,11 @@
       btn.classList.toggle("active", btn.getAttribute("data-color-mode") === colorMode);
     });
     const hints = {
-      type: "Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.",
-      louvain: "Communauté Louvain sur le graphe RT HMPV seulement. Hors graphe RT → gris (donnée absente, pas un bug).",
-      geo: "Pays = lieu profil ∪ lieu tagué publication. Sinon gris (souvent vraiment indisponible ; free-text non géocodé possible).",
-      age: "Année de création du compte (snowflake). Marine = ancien → corail = récent. Inconnu → gris.",
-      lang: "Langue du tweet (EN bleu / FR rouge). Sinon langue dominante de l’auteur. Indéterminé → gris.",
+      type: "Toutes vues · ancre / réponse / citation / RT. Arcs = couleur de l’enfant.",
+      louvain: "Toutes vues · communauté Louvain (graphe RT). Hors partition → gris.",
+      geo: "Toutes vues · pays (profil ∪ lieu tweet). Inconnu → gris.",
+      age: "Toutes vues · année du compte. Marine = ancien → corail = récent. Inconnu → gris.",
+      lang: "Toutes vues · langue du tweet (EN bleu / FR rouge). RT → langue du parent si besoin.",
     };
     const hint = document.getElementById("colorModeHint");
     if (hint) hint.textContent = hints[colorMode] || "";
@@ -1232,9 +1266,14 @@
       const row = rows[i];
       const id = String(row[0]);
       if (!id || byId[id]) continue;
+      const author = String(row[1] || "");
+      const langHint = (overlays && overlays.lang_post && overlays.lang_post[id])
+        || (overlays && overlays.lang_post && overlays.lang_post[parentId])
+        || (overlays && overlays.lang && overlays.lang[author.replace(/^@/, "").toLowerCase()])
+        || "";
       byId[id] = {
         id,
-        author: String(row[1] || ""),
+        author,
         t: Number(row[2] || 0),
         iso: String(row[3] || ""),
         rt: Number(row[4] || 0),
@@ -1242,6 +1281,7 @@
         quotes: Number(row[6] || 0),
         likes: Number(row[7] || 0),
         text: String(row[8] || ""),
+        lang: langHint,
         relation: "retweet",
         niveau: (byId[parentId] && byId[parentId].niveau != null) ? (byId[parentId].niveau + 1) : 1,
         depth: (byId[parentId] && byId[parentId].depth != null) ? (byId[parentId].depth + 1) : 1,
@@ -2885,8 +2925,12 @@
   document.getElementById("colorModeRow").addEventListener("click", (ev) => {
     const btn = ev.target.closest("[data-color-mode]");
     if (!btn) return;
-    colorMode = btn.getAttribute("data-color-mode") || "type";
+    const next = btn.getAttribute("data-color-mode") || "type";
+    if (next === colorMode) return;
+    colorMode = next;
     syncColorModeButtons();
+    // Recolorier nœuds + arcs sans changer la vue / le zoom
+    updateFilterStats();
     draw();
   });
   let viewSwitchRunning = false;
@@ -2908,6 +2952,7 @@
     try {
       viewMode = next;
       syncViewModeButtons();
+      syncColorModeButtons(); // garder le mode couleur actif, légende à jour
       setSelectedNode(null);
       resetExpansion();
       if (viewShowsRetweets()) {
