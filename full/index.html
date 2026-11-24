@@ -579,6 +579,7 @@
             <button type="button" class="mode-btn active" data-color-mode="type">Type</button>
             <button type="button" class="mode-btn" data-color-mode="louvain">Louvain</button>
             <button type="button" class="mode-btn" data-color-mode="geo">Pays</button>
+            <button type="button" class="mode-btn" data-color-mode="age">Âge compte</button>
           </div>
           <p class="hint" id="colorModeHint">Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.</p>
         </div>
@@ -965,7 +966,7 @@
     unknown: "#788696",
   };
 
-  let colorMode = "type"; // type | louvain | geo
+  let colorMode = "type"; // type | louvain | geo | age
   /** base | rt | rp_quote | full — défaut = cascades RP/QT */
   let viewMode = "rp_quote";
   let overlays = null;
@@ -1011,6 +1012,39 @@
     return COLORS.reply;
   }
 
+  function lerpRgb(a, b, t) {
+    const u = Math.max(0, Math.min(1, t));
+    return [
+      Math.round(a[0] + (b[0] - a[0]) * u),
+      Math.round(a[1] + (b[1] - a[1]) * u),
+      Math.round(a[2] + (b[2] - a[2]) * u),
+    ];
+  }
+
+  function ageColorRgb(year) {
+    if (year == null || !overlays) return overlays?.unknown_color || [120, 130, 140];
+    const y0 = overlays.age_min ?? 2010;
+    const y1 = overlays.age_max ?? 2026;
+    const t = y1 > y0 ? (Number(year) - y0) / (y1 - y0) : 0;
+    const stops = overlays.age_stops || [
+      { t: 0, rgb: [13, 59, 102] },
+      { t: 0.35, rgb: [26, 122, 109] },
+      { t: 0.7, rgb: [232, 168, 56] },
+      { t: 1, rgb: [232, 93, 76] },
+    ];
+    let lo = stops[0];
+    let hi = stops[stops.length - 1];
+    for (let i = 0; i < stops.length - 1; i++) {
+      if (t >= stops[i].t && t <= stops[i + 1].t) {
+        lo = stops[i];
+        hi = stops[i + 1];
+        break;
+      }
+    }
+    const span = Math.max(hi.t - lo.t, 1e-6);
+    return lerpRgb(lo.rgb, hi.rgb, (t - lo.t) / span);
+  }
+
   function colorForNode(node) {
     if (!node) return COLORS.unknown;
     if (colorMode === "type") return typeColor(node.relation);
@@ -1028,6 +1062,12 @@
       if (!code) return COLORS.unknown;
       const rgb = overlays.country_color[code] || overlays.unknown_color;
       return rgbCss(rgb);
+    }
+    if (colorMode === "age") {
+      if (!overlays || !overlays.age_year) return COLORS.unknown;
+      const year = overlays.age_year[key];
+      if (year == null) return COLORS.unknown;
+      return rgbCss(ageColorRgb(year));
     }
     return typeColor(node.relation);
   }
@@ -1076,6 +1116,7 @@
       type: "Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.",
       louvain: "Communauté Louvain sur le graphe RT HMPV seulement. Hors graphe RT → gris (donnée absente, pas un bug).",
       geo: "Pays = lieu profil ∪ lieu tagué publication. Sinon gris (souvent vraiment indisponible ; free-text non géocodé possible).",
+      age: "Année de création du compte (snowflake). Marine = ancien → corail = récent. Inconnu → gris.",
     };
     const hint = document.getElementById("colorModeHint");
     if (hint) hint.textContent = hints[colorMode] || "";
@@ -1098,6 +1139,23 @@
       box.innerHTML = tops.slice(0, 8).map((c) =>
         `<span class="lg-item"><i class="swatch" style="background:${rgbCss(c.color)}"></i>C${c.id} · ${fmtNum(c.n)}</span>`
       ).join("") + `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>hors partition</span>`;
+      return;
+    }
+    if (colorMode === "age") {
+      const y0 = (overlays && overlays.age_min) || 2010;
+      const y1 = (overlays && overlays.age_max) || 2026;
+      const mid = Math.round((y0 + y1) / 2);
+      const stops = [
+        { y: y0, rgb: ageColorRgb(y0) },
+        { y: mid, rgb: ageColorRgb(mid) },
+        { y: y1, rgb: ageColorRgb(y1) },
+      ];
+      const grad = `linear-gradient(90deg, ${stops.map((s) => rgbCss(s.rgb)).join(", ")})`;
+      box.innerHTML =
+        `<span class="lg-item" style="gap:0.4rem">` +
+        `<i class="swatch" style="width:72px;height:10px;border-radius:4px;background:${grad}"></i>` +
+        `<span>${y0} → ${y1}</span></span>` +
+        `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>inconnu</span>`;
       return;
     }
     const codes = Object.keys((overlays && overlays.country_color) || {}).slice(0, 10);
@@ -1132,7 +1190,10 @@
       (viewShowsChildren()
         ? ` · affichés RP ${fmtNum(shownR)} / QT ${fmtNum(shownQ)} / RT ${fmtNum(shownRt)}`
         : " · aucun enfant") +
-      (overlays ? ` · Louvain ${fmtNum(overlays.n_louvain)} · pays ${fmtNum(overlays.n_country)}` : "") +
+      (overlays
+        ? ` · Louvain ${fmtNum(overlays.n_louvain)} · pays ${fmtNum(overlays.n_country)}` +
+          (overlays.n_age != null ? ` · âge ${fmtNum(overlays.n_age)}` : "")
+        : "") +
       (rtMeta ? ` · index RT ${fmtNum(rtMeta.n_retweets || 0)}` : "");
   }
 
@@ -1283,6 +1344,11 @@
   }
 
   function radiusOf(n) {
+    // Nœuds retweet : toujours compacts (sinon la vue full explose)
+    if (n && n.relation === "retweet") {
+      const v = Math.max(0, engagementOf(n));
+      return Math.min(2.2 + 0.35 * Math.sqrt(v), 8);
+    }
     const v = Math.max(0, sizeScoreOf(n));
     const strong = viewEmphasizesRt();
     let r;
@@ -1296,25 +1362,23 @@
       }
       return Math.min(r, 48);
     }
-    // RT only / Complet : bas compact, haut très étiré
-    if (v <= 0) r = 1.8;
-    else if (v <= 15) r = 1.8 + 0.55 * Math.sqrt(v);
+    // RT only / Complet (ancres & RP/QT) : contraste sur les originales
+    if (v <= 0) r = 2.4;
+    else if (v <= 15) r = 2.4 + 0.45 * Math.sqrt(v);
     else {
-      const t = Math.min(1.35, Math.log1p(v) / Math.log1p(25000));
-      r = 4.5 + 14 * t + 110 * Math.pow(t, 2.55);
+      const t = Math.min(1.2, Math.log1p(v) / Math.log1p(25000));
+      r = 5 + 12 * t + 55 * Math.pow(t, 2.2);
     }
-    if (v >= 80) r = Math.max(r, 14);
-    if (v >= 300) r = Math.max(r, 24);
-    if (v >= 1200) r = Math.max(r, 42);
-    if (v >= 5000) r = Math.max(r, 70);
-    if (v >= 15000) r = Math.max(r, 105);
-    if (v >= 40000) r = Math.max(r, 135);
+    if (v >= 80) r = Math.max(r, 12);
+    if (v >= 300) r = Math.max(r, 20);
+    if (v >= 1200) r = Math.max(r, 32);
+    if (v >= 5000) r = Math.max(r, 48);
+    if (v >= 15000) r = Math.max(r, 70);
     const inf = authorInfluenceScore(n.author);
     if (inf > 0) {
-      r *= 1 + 0.9 * Math.pow(inf, 1.1);
-      if (inf >= 0.8) r = Math.max(r, 18 + 22 * (inf - 0.8));
+      r *= 1 + 0.55 * Math.pow(inf, 1.1);
     }
-    return Math.min(r, 190);
+    return Math.min(r, 110);
   }
 
   function avatarImgUrl(username) {
@@ -1332,6 +1396,15 @@
     const margin = 120;
     const seen = new Set();
     for (const n of layoutNodes) {
+      // Retweets : pastille canvas seulement (perf vue full)
+      if (n.relation === "retweet" && view.scale < 1.1) {
+        const old = avatarEls.get(n.id);
+        if (old) {
+          old.remove();
+          avatarEls.delete(n.id);
+        }
+        continue;
+      }
       const d = Math.max(2, n.r * 2 * view.scale);
       const cx = view.tx + n.px * view.scale;
       const cy = view.ty + n.py * view.scale;
@@ -1415,6 +1488,13 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function hashStr(s) {
+    let h = 0;
+    const str = String(s || "");
+    for (let i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    return h;
   }
 
   function allowedChild(node) {
@@ -1542,20 +1622,37 @@
     });
 
     const laneOf = {};
+    const rtJitter = {};
     for (const rid of roots) {
       laneOf[rid] = rootLane[rid] || 0;
-      const heads = (visChildren[rid] || []).slice();
+      const kids = (visChildren[rid] || []).slice();
+      const cascadeHeads = kids.filter((id) => (byId[id] || {}).relation !== "retweet");
+      const rtHeads = kids.filter((id) => (byId[id] || {}).relation === "retweet");
       let left = -1;
       let right = 1;
       const base = laneOf[rid];
-      for (let i = 0; i < heads.length; i++) {
+      // RP/QT : vrais couloirs ; RT : restent près du parent (évite largeur × milliers)
+      for (let i = 0; i < cascadeHeads.length; i++) {
         const offset = (i % 2 === 0) ? right++ : left--;
-        laneOf[heads[i]] = base + offset;
+        laneOf[cascadeHeads[i]] = base + offset;
+      }
+      for (let i = 0; i < rtHeads.length; i++) {
+        laneOf[rtHeads[i]] = base;
+        rtJitter[rtHeads[i]] = ((i % 2 === 0) ? 1 : -1) * (10 + (i % 12) * 3);
       }
     }
     for (const n of nodes) {
       const rid = rootOf[n.id] || n.id;
       if (n.id === rid) continue;
+      if (n.relation === "retweet") {
+        const p = parentOf[n.id];
+        laneOf[n.id] = laneOf[p] != null ? laneOf[p] : (laneOf[rid] || 0);
+        if (rtJitter[n.id] == null) {
+          const h = Math.abs(hashStr(n.id)) % 24;
+          rtJitter[n.id] = ((h % 2 === 0) ? 1 : -1) * (8 + (h % 10) * 2.5);
+        }
+        continue;
+      }
       const head = branchHead(n.id, rid);
       if (laneOf[head] == null) laneOf[head] = (laneOf[rid] || 0) + 1;
       const depthFromHead = n.id === head
@@ -1570,9 +1667,10 @@
     const tMax = nodes[nodes.length - 1].t;
     const tSpan = Math.max(tMax - tMin, 1);
     const spanH = tSpan / 3600;
-    // Hauteur pilotée par le temps réel (plus les délais sont longs, plus l'axe s'étire)
+    // Hauteur : densifier si forêt + RT (sinon canvas gigantesque / fond noir)
     const pxPerHour = spanH <= 6 ? 90 : spanH <= 24 ? 36 : spanH <= 168 ? 10 : spanH <= 720 ? 3.5 : 1.2;
-    const minGap = 22;
+    const nVis = nodes.length;
+    const minGap = nVis > 80000 ? 3.2 : nVis > 40000 ? 5 : nVis > 20000 ? 8 : nVis > 10000 ? 12 : 22;
     const timeHeight = Math.max(nodes.length * minGap, spanH * pxPerHour, 420);
 
     // Position Y = temps proportionnel, puis poussée pour respecter un écart mini
@@ -1592,7 +1690,8 @@
 
     layoutNodes = nodes.map((n) => {
       const lane = laneOf[n.id] ?? 0;
-      const px = PAD_L + (lane - laneMin) * LANE_W + 280;
+      const jitter = n.relation === "retweet" ? (rtJitter[n.id] || 0) : 0;
+      const px = PAD_L + (lane - laneMin) * LANE_W + 280 + jitter;
       const py = PAD_T + yPix[n.id];
       return { ...n, px, py, r: radiusOf(n), lane };
     });
@@ -2081,12 +2180,17 @@
       setLoadProgress(0.96, "Mise en page…");
       layoutVisible();
       updateStats();
-      fitView();
+      fitView({ mode: "overview" });
+      // Vue full/RT : un cran de dézoom + recentrage pour garder la silhouette navigable
+      if (viewShowsRetweets()) {
+        view.scale = Math.max(wheelMinScale(), view.scale * 0.82);
+        centerOnContent();
+      }
       draw();
       const vis = visibleNodeIds().size;
       const nEdges = layoutEdges.length;
       el.status.textContent =
-        `Déplié · ${viewLabel} · ${fmtNum(n)} arbres · ${fmtNum(vis)} nœuds · ${fmtNum(nEdges)} arcs · vue d'ensemble (échelle ${view.scale.toFixed(4)})`;
+        `Déplié · ${viewLabel} · ${fmtNum(n)} arbres · ${fmtNum(vis)} nœuds · ${fmtNum(nEdges)} arcs · figure centrée (échelle ${view.scale.toFixed(4)})`;
       if (nEdges === 0 && viewShowsChildren()) {
         el.status.textContent += " · aucun arc (données enfants absentes ?)";
       }
@@ -2197,8 +2301,13 @@
       return px + pad >= xL && px - pad <= xR && py + pad >= yT && py - pad <= yB;
     }
 
-    // edges : RT enfant domine — RT 0 / faibles = fil ; RT élevés = rupture visible
+    // edges : retweet = traits fins ; RP/QT gardent un contraste plus fort
     function edgeLineWidth(e) {
+      if (e.relation === "retweet") {
+        const likes = e.child_likes || 0;
+        const w = 0.1 + Math.min(0.22, 0.035 * Math.log1p(likes));
+        return w / view.scale;
+      }
       const rt = e.child_rt || 0;
       const likes = e.child_likes || 0;
       let w;
@@ -2230,7 +2339,9 @@
           ctx.lineWidth = Math.max(edgeLineWidth(e) * 1.35, 1.8 / view.scale);
         } else {
           ctx.strokeStyle = colorForEdge(e);
-          let a = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
+          let a;
+          if (e.relation === "retweet") a = 0.28;
+          else a = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
           if (focusOn) a *= 0.18;
           ctx.globalAlpha = a;
           ctx.lineWidth = edgeLineWidth(e);
@@ -2720,21 +2831,17 @@
       syncExpandedChildCaps();
     }
     if (viewShowsChildren()) {
-      if (expanded.size === 0) {
-        await expandAll();
+      // RT / full : toujours redéplier + recentrer la silhouette (sinon fond noir / hors cadre)
+      if (viewShowsRetweets() || expanded.size === 0) {
+        await expandAll({ title: `Vue ${next} · chargement` });
       } else {
-        // Réouvrir les caps selon le filtre courant (RP/QT vs RT)
         syncExpandedChildCaps();
-        // Si la vue RT/full n'a encore aucun enfant visible, déplier
         let anyChild = false;
         for (const id of expanded) {
           if (filteredChildren(id).length) { anyChild = true; break; }
         }
-        if (!anyChild) {
-          await expandAll();
-        } else {
-          refreshForest();
-        }
+        if (!anyChild) await expandAll();
+        else refreshForest();
       }
     } else {
       refreshForest();
