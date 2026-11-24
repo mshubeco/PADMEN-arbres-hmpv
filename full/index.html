@@ -1339,10 +1339,10 @@
   }
 
   function radiusOf(n) {
-    // Nœuds retweet : compacts mais lisibles
+    // Nœuds retweet : taille modérée (lisibles sans coller)
     if (n && n.relation === "retweet") {
       const v = Math.max(0, engagementOf(n));
-      return Math.min(3.2 + 0.45 * Math.sqrt(v), 12);
+      return Math.min(4.5 + 0.5 * Math.sqrt(v), 14);
     }
     const v = Math.max(0, sizeScoreOf(n));
     const strong = viewEmphasizesRt();
@@ -1616,27 +1616,21 @@
       rootLane[rid] = (i % 2 === 0) ? 0 : 0.45;
     });
 
-    // 1) Layout chronologique des non-RT (ancres / RP / QT)
-    // 2) RT placés en éventail autour du parent (pas sur l'axe temps global —
-    //    sinon arcs kilométriques et silhouette « cassée »)
-    const cascadeNodes = nodes.filter((n) => n.relation !== "retweet");
-    const rtNodes = nodes.filter((n) => n.relation === "retweet");
-
+    // Même logique que Reply+Quote : couloirs G/D + chronologie, y compris les RT
+    // (pas de grille compacte → pas de superposition)
     const laneOf = {};
     for (const rid of roots) {
       laneOf[rid] = rootLane[rid] || 0;
-      const cascadeHeads = (visChildren[rid] || []).filter(
-        (id) => (byId[id] || {}).relation !== "retweet"
-      );
+      const heads = (visChildren[rid] || []).slice();
       let left = -1;
       let right = 1;
       const base = laneOf[rid];
-      for (let i = 0; i < cascadeHeads.length; i++) {
+      for (let i = 0; i < heads.length; i++) {
         const offset = (i % 2 === 0) ? right++ : left--;
-        laneOf[cascadeHeads[i]] = base + offset;
+        laneOf[heads[i]] = base + offset;
       }
     }
-    for (const n of cascadeNodes) {
+    for (const n of nodes) {
       const rid = rootOf[n.id] || n.id;
       if (n.id === rid) continue;
       const head = branchHead(n.id, rid);
@@ -1645,67 +1639,52 @@
         ? 0
         : Math.max(0, (n.depth || 0) - (byId[head]?.depth || 1));
       const sign = Math.sign(laneOf[head] - (laneOf[rid] || 0)) || 1;
-      laneOf[n.id] = laneOf[head] + sign * depthFromHead * 0.35;
+      // RT : un peu plus d'écart latéral que RP/QT pour éviter les paquets
+      const depthStep = n.relation === "retweet" ? 0.55 : 0.35;
+      laneOf[n.id] = laneOf[head] + sign * depthFromHead * depthStep;
     }
 
-    cascadeNodes.sort((a, b) => (a.t - b.t) || a.id.localeCompare(b.id));
-    const tMin = cascadeNodes.length ? cascadeNodes[0].t : (nodes[0].t || 0);
-    const tMax = cascadeNodes.length ? cascadeNodes[cascadeNodes.length - 1].t : tMin + 1;
+    nodes.sort((a, b) => (a.t - b.t) || a.id.localeCompare(b.id));
+    const tMin = nodes[0].t;
+    const tMax = nodes[nodes.length - 1].t;
     const tSpan = Math.max(tMax - tMin, 1);
     const spanH = tSpan / 3600;
     const pxPerHour = spanH <= 6 ? 90 : spanH <= 24 ? 36 : spanH <= 168 ? 12 : spanH <= 720 ? 5 : 2.2;
-    const minGap = 20;
+    // RT only / full : écart mini plus généreux pour zéro superposition
+    let nRtVis = 0;
+    for (let i = 0; i < nodes.length; i++) if (nodes[i].relation === "retweet") nRtVis += 1;
+    const rtHeavy = viewShowsRetweets() && nRtVis > 0;
+    const minGap = rtHeavy ? 26 : 20;
     const maxEmptyGap = 110;
-    const timeHeight = Math.max(Math.max(cascadeNodes.length, 1) * minGap, spanH * pxPerHour, 420);
+    const timeHeight = Math.max(nodes.length * minGap, spanH * pxPerHour, 420);
 
     const yPix = {};
-    for (let i = 0; i < cascadeNodes.length; i++) {
-      const n = cascadeNodes[i];
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i];
       let y = ((n.t - tMin) / tSpan) * timeHeight;
       if (i > 0) {
-        const prev = cascadeNodes[i - 1];
+        const prev = nodes[i - 1];
         const prevY = yPix[prev.id];
-        if (y < prevY + minGap) y = prevY + minGap;
+        const gap = (n.relation === "retweet" || prev.relation === "retweet")
+          ? Math.max(minGap, (radiusOf(n) + radiusOf(prev)) + 10)
+          : minGap;
+        if (y < prevY + gap) y = prevY + gap;
         else if (y > prevY + maxEmptyGap) y = prevY + maxEmptyGap;
       }
       yPix[n.id] = y;
     }
 
-    const laneVals = cascadeNodes.map((n) => laneOf[n.id] ?? 0);
-    const laneMin = laneVals.length ? Math.min(...laneVals, 0) : 0;
+    const laneVals = nodes.map((n) => laneOf[n.id] ?? 0);
+    const laneMin = Math.min(...laneVals, 0);
+    // Couloirs un peu plus larges quand beaucoup de RT
+    const laneW = rtHeavy ? Math.max(LANE_W, 130) : LANE_W;
 
-    layoutNodes = cascadeNodes.map((n) => {
+    layoutNodes = nodes.map((n) => {
       const lane = laneOf[n.id] ?? 0;
-      const px = PAD_L + (lane - laneMin) * LANE_W + 280;
-      const py = PAD_T + (yPix[n.id] || 0);
+      const px = PAD_L + (lane - laneMin) * laneW + 280;
+      const py = PAD_T + yPix[n.id];
       return { ...n, px, py, r: radiusOf(n), lane };
     });
-
-    // Éventail RT autour de chaque parent déjà positionné
-    const posCascade = Object.fromEntries(layoutNodes.map((n) => [n.id, n]));
-    const rtsByParent = {};
-    for (const n of rtNodes) {
-      const p = parentOf[n.id] || n.racine_id || "";
-      if (!rtsByParent[p]) rtsByParent[p] = [];
-      rtsByParent[p].push(n);
-    }
-    for (const pid of Object.keys(rtsByParent)) {
-      const bunch = rtsByParent[pid].slice().sort((a, b) => (a.t - b.t) || a.id.localeCompare(b.id));
-      const parent = posCascade[pid];
-      const baseX = parent ? parent.px : PAD_L + 280;
-      const baseY = parent ? parent.py : PAD_T;
-      const cols = Math.min(10, Math.max(3, Math.ceil(Math.sqrt(bunch.length))));
-      for (let i = 0; i < bunch.length; i++) {
-        const n = bunch[i];
-        const col = i % cols;
-        const row = Math.floor(i / cols);
-        const px = baseX + (col - (cols - 1) / 2) * 22;
-        const py = baseY + 16 + row * 14;
-        const laid = { ...n, px, py, r: radiusOf(n), lane: laneOf[pid] ?? 0 };
-        layoutNodes.push(laid);
-        posCascade[n.id] = laid;
-      }
-    }
 
     layoutNodes._timeHeight = timeHeight;
     layoutNodes._spanH = spanH;
@@ -1713,18 +1692,18 @@
     layoutNodes._tMax = tMax;
 
     layoutNodes.sort((a, b) => a.py - b.py || a.px - b.px);
-    // Anti-chevauchement X : seulement non-RT (les RT sont déjà en grille)
-    const nonRtLayout = layoutNodes.filter((n) => n.relation !== "retweet");
-    if (nonRtLayout.length <= 12000) {
-      for (let i = 0; i < nonRtLayout.length; i++) {
-        for (let j = i + 1; j < nonRtLayout.length; j++) {
-          const a = nonRtLayout[i];
-          const b = nonRtLayout[j];
-          if (b.py - a.py > Math.max(a.r + b.r + 8, 32)) break;
-          const minDx = a.r + b.r + 16;
+    // Anti-chevauchement X/Y pour tous les nœuds (y compris RT)
+    const collideLimit = 25000;
+    if (layoutNodes.length <= collideLimit) {
+      for (let i = 0; i < layoutNodes.length; i++) {
+        for (let j = i + 1; j < layoutNodes.length; j++) {
+          const a = layoutNodes[i];
+          const b = layoutNodes[j];
+          if (b.py - a.py > Math.max(a.r + b.r + 12, 40)) break;
+          const minDx = a.r + b.r + 18;
           const dx = b.px - a.px;
           if (Math.abs(dx) < minDx) {
-            const push = (minDx - Math.abs(dx)) / 2 + 2;
+            const push = (minDx - Math.abs(dx)) / 2 + 3;
             if (dx >= 0) { b.px += push; a.px -= push; }
             else { b.px -= push; a.px += push; }
           }
@@ -2327,11 +2306,10 @@
       return px + pad >= xL && px - pad <= xR && py + pad >= yT && py - pad <= yB;
     }
 
-    // edges : retweet = traits fins ; RP/QT gardent un contraste plus fort
+    // edges : retweet = traits très fins ; RP/QT gardent un contraste plus fort
     function edgeLineWidth(e) {
       if (e.relation === "retweet") {
-        const likes = e.child_likes || 0;
-        const w = 0.1 + Math.min(0.22, 0.035 * Math.log1p(likes));
+        const w = 0.06 + Math.min(0.12, 0.02 * Math.log1p(e.child_likes || 0));
         return w / view.scale;
       }
       const rt = e.child_rt || 0;
@@ -2366,7 +2344,7 @@
         } else {
           ctx.strokeStyle = colorForEdge(e);
           let a;
-          if (e.relation === "retweet") a = 0.28;
+          if (e.relation === "retweet") a = 0.22;
           else a = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
           if (focusOn) a *= 0.18;
           ctx.globalAlpha = a;
