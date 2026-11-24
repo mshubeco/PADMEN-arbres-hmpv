@@ -1043,23 +1043,28 @@
 
   function radiusOf(n) {
     const v = Math.max(0, (el.sizeSubtree.checked ? n.subtree_rt : n.rt) || 0);
-    // base : RT du post (≈0 → minuscule)
+    // RT du post : bas de gamme compact, haut de gamme très étiré
     let r;
-    if (v <= 0) r = 1.6;
-    else if (v <= 3) r = 1.6 + 0.85 * v;
+    if (v <= 0) r = 1.8;
+    else if (v <= 5) r = 1.8 + 1.1 * v;
     else {
-      const t = Math.log1p(v) / Math.log1p(150);
-      r = 3.0 + 28 * Math.pow(Math.min(t, 1.85), 1.45);
+      const t = Math.min(1.35, Math.log1p(v) / Math.log1p(800));
+      r = 4.5 + 14 * t + 110 * Math.pow(t, 2.55);
     }
-    // comptes influents : fort contraste vs le reste (jusqu'à ~×5–6 + planchers)
+    // planchers par paliers de viralité (publication, pas compte)
+    if (v >= 30) r = Math.max(r, 14);
+    if (v >= 100) r = Math.max(r, 24);
+    if (v >= 400) r = Math.max(r, 42);
+    if (v >= 1500) r = Math.max(r, 70);
+    if (v >= 5000) r = Math.max(r, 105);
+    if (v >= 10000) r = Math.max(r, 135);
+    // boost secondaire du compte, sans écraser l’écart entre posts
     const inf = authorInfluenceScore(n.author);
     if (inf > 0) {
-      r *= 1 + 2.8 * Math.pow(inf, 0.95);
-      if (inf >= 0.3) r = Math.max(r, 8 + 38 * Math.pow(inf, 1.05));
-      if (inf >= 0.7) r = Math.max(r, 48 + 55 * (inf - 0.7));
-      if (inf >= 1.2) r = Math.max(r, 90 + 40 * (inf - 1.2));
+      r *= 1 + 0.9 * Math.pow(inf, 1.1);
+      if (inf >= 0.8) r = Math.max(r, 18 + 22 * (inf - 0.8));
     }
-    return Math.min(r, 140);
+    return Math.min(r, 190);
   }
 
   function avatarImgUrl(username) {
