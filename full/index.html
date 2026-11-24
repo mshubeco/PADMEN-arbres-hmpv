@@ -2448,19 +2448,19 @@
       return px + pad >= xL && px - pad <= xR && py + pad >= yT && py - pad <= yB;
     }
 
-    // edges : RT fins mais modulés par likes du contenu relayé ; RP/QT plus contrastés
+    // edges : RT très fins (légèrement modulés) ; RP/QT plus contrastés
     function edgeLineWidth(e) {
       if (e.relation === "retweet") {
         const likes = e.rt_like_score || e.parent_likes || e.child_likes || 0;
         let w;
-        if (likes <= 0) w = 0.07;
-        else if (likes <= 20) w = 0.08 + 0.04 * Math.sqrt(likes);
-        else if (likes <= 200) w = 0.2 + 0.08 * Math.log1p(likes);
+        if (likes <= 0) w = 0.035;
+        else if (likes <= 20) w = 0.04 + 0.018 * Math.sqrt(likes);
+        else if (likes <= 200) w = 0.09 + 0.035 * Math.log1p(likes);
         else {
           const t = Math.min(1.1, Math.log1p(likes) / Math.log1p(10000));
-          w = 0.35 + 1.4 * Math.pow(t, 1.4);
+          w = 0.15 + 0.55 * Math.pow(t, 1.4);
         }
-        return Math.min(w, 2.2) / view.scale;
+        return Math.min(w, 0.85) / view.scale;
       }
       const rt = e.child_rt || 0;
       const likes = e.child_likes || 0;
@@ -2490,7 +2490,8 @@
         if (edgeFocus) {
           ctx.strokeStyle = "rgba(255, 220, 120, 0.95)";
           ctx.globalAlpha = 0.95;
-          ctx.lineWidth = Math.max(edgeLineWidth(e) * 1.35, 1.8 / view.scale);
+          const focusMin = e.relation === "retweet" ? 0.7 / view.scale : 1.8 / view.scale;
+          ctx.lineWidth = Math.max(edgeLineWidth(e) * 1.35, focusMin);
         } else {
           ctx.strokeStyle = colorForEdge(e);
           let a;
