@@ -1107,9 +1107,9 @@
     el.showQuote.checked = viewShowsQuotes();
     const hints = {
       base: "Originales seulement, sans arcs ni enfants.",
-      rt: "Originales et arcs retweet (RT du corpus). Pas de RP/QT.",
+      rt: "Originales + arcs RT. Taille/épaisseur ∝ likes du contenu relayé (likes RT = 0 dans l’API).",
       rp_quote: "Réponses et citations en arcs. Pas de retweets.",
-      full: "Retweets + réponses + citations. Taille = RT+RP+QT+likes.",
+      full: "RT + RP + QT. Nœuds/arcs RT modulés par likes du parent relayé.",
     };
     const hint = document.getElementById("viewModeHint");
     if (hint) hint.textContent = hints[viewMode] || "";
@@ -1344,6 +1344,20 @@
     return (node.rt || 0) + (node.replies || 0) + (node.quotes || 0) + (node.likes || 0);
   }
 
+  /**
+   * Score likes pour un nœud RT.
+   * Les like_count des retweets sont à 0 dans le corpus (API X) :
+   * on utilise alors les likes du parent (publication relayée).
+   */
+  function rtLikeScore(node) {
+    if (!node) return 0;
+    const own = node.likes || 0;
+    if (own > 0) return own;
+    const pid = parentOf[node.id] || node.parent_id;
+    const parent = pid ? byId[pid] : null;
+    return (parent && parent.likes) || 0;
+  }
+
   /** Σ interactions du nœud, ou de tout le sous-arbre déjà chargé. */
   function sizeScoreOf(n) {
     if (!n) return 0;
@@ -1365,10 +1379,14 @@
   }
 
   function radiusOf(n) {
-    // Nœuds retweet : taille modérée (lisibles sans coller)
+    // Nœuds retweet : taille ∝ likes (du RT, sinon du parent relayé)
     if (n && n.relation === "retweet") {
-      const v = Math.max(0, engagementOf(n));
-      return Math.min(4.5 + 0.5 * Math.sqrt(v), 14);
+      const likes = rtLikeScore(n);
+      if (likes <= 0) return 3.8;
+      if (likes <= 20) return 3.8 + 0.55 * Math.sqrt(likes);
+      if (likes <= 200) return 6.5 + 0.35 * Math.sqrt(likes);
+      const t = Math.min(1.15, Math.log1p(likes) / Math.log1p(8000));
+      return Math.min(8 + 28 * Math.pow(t, 1.25), 42);
     }
     const v = Math.max(0, sizeScoreOf(n));
     const strong = viewEmphasizesRt();
@@ -1538,9 +1556,16 @@
     return (childrenMap[id] || [])
       .filter((cid) => allowedChild(byId[cid]))
       .sort((a, b) => {
-        const d = byId[b].subtree_rt - byId[a].subtree_rt;
+        const na = byId[a];
+        const nb = byId[b];
+        // En vue RT : prioriser les relais du contenu le plus liké
+        if (viewShowsRetweets() && !viewShowsReplies()) {
+          const dL = rtLikeScore(nb) - rtLikeScore(na);
+          if (dL !== 0) return dL;
+        }
+        const d = (nb.subtree_rt || 0) - (na.subtree_rt || 0);
         if (d !== 0) return d;
-        return byId[a].t - byId[b].t;
+        return (na.t || 0) - (nb.t || 0);
       });
   }
 
@@ -1753,12 +1778,19 @@
       for (const c of visChildren[n.id] || []) {
         if (!pos[c]) continue;
         const child = byId[c];
+        const childLikes = child.likes || 0;
+        const parentLikes = n.likes || 0;
         layoutEdges.push({
           source: n.id,
           target: c,
           relation: child.relation,
           child_rt: child.rt || 0,
-          child_likes: child.likes || 0,
+          child_likes: childLikes,
+          parent_likes: parentLikes,
+          // RT : likes propres sinon likes du contenu relayé
+          rt_like_score: child.relation === "retweet"
+            ? (childLikes > 0 ? childLikes : parentLikes)
+            : childLikes,
           s: pos[n.id],
           t: pos[c],
         });
@@ -2332,11 +2364,19 @@
       return px + pad >= xL && px - pad <= xR && py + pad >= yT && py - pad <= yB;
     }
 
-    // edges : retweet = traits très fins ; RP/QT gardent un contraste plus fort
+    // edges : RT fins mais modulés par likes du contenu relayé ; RP/QT plus contrastés
     function edgeLineWidth(e) {
       if (e.relation === "retweet") {
-        const w = 0.06 + Math.min(0.12, 0.02 * Math.log1p(e.child_likes || 0));
-        return w / view.scale;
+        const likes = e.rt_like_score || e.parent_likes || e.child_likes || 0;
+        let w;
+        if (likes <= 0) w = 0.07;
+        else if (likes <= 20) w = 0.08 + 0.04 * Math.sqrt(likes);
+        else if (likes <= 200) w = 0.2 + 0.08 * Math.log1p(likes);
+        else {
+          const t = Math.min(1.1, Math.log1p(likes) / Math.log1p(10000));
+          w = 0.35 + 1.4 * Math.pow(t, 1.4);
+        }
+        return Math.min(w, 2.2) / view.scale;
       }
       const rt = e.child_rt || 0;
       const likes = e.child_likes || 0;
@@ -2370,8 +2410,10 @@
         } else {
           ctx.strokeStyle = colorForEdge(e);
           let a;
-          if (e.relation === "retweet") a = 0.22;
-          else a = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
+          if (e.relation === "retweet") {
+            const lk = e.rt_like_score || 0;
+            a = lk <= 0 ? 0.16 : lk <= 20 ? 0.28 : lk <= 200 ? 0.4 : 0.55;
+          } else a = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
           if (focusOn) a *= 0.18;
           ctx.globalAlpha = a;
           ctx.lineWidth = edgeLineWidth(e);
