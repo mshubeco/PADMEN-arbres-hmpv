@@ -16,6 +16,7 @@
       --reply: #5b9bd5;
       --quote: #e8a45a;
       --ancre: #9ad67a;
+      --retweet: #c4b5fd;
       --font: "Segoe UI", "IBM Plex Sans", system-ui, sans-serif;
       --mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
     }
@@ -54,6 +55,7 @@
     .swatch.reply { background: var(--reply); }
     .swatch.quote { background: var(--quote); }
     .swatch.ancre { background: var(--ancre); }
+    .swatch.retweet { background: var(--retweet); }
     .swatch.edge-reply {
       width: 16px; height: 2px; border-radius: 0; vertical-align: 3px;
       background: var(--reply);
@@ -211,6 +213,7 @@
     .thread-item.reply { border-left-color: var(--reply); }
     .thread-item.quote { border-left-color: var(--quote); }
     .thread-item.ancre { border-left-color: var(--ancre); }
+    .thread-item.retweet { border-left-color: var(--retweet); }
 
     #main {
       display: grid;
@@ -342,6 +345,7 @@
     #avatarLayer .av.reply { border: 2px solid var(--reply); }
     #avatarLayer .av.quote { border: 2px solid var(--quote); }
     #avatarLayer .av.ancre { border: 2.5px solid var(--ancre); }
+    #avatarLayer .av.retweet { border: 2px solid var(--retweet); }
     #avatarLayer .av.selected {
       border-color: #fff !important;
       box-shadow: 0 0 0 2px #fff8, 0 4px 14px #000a;
@@ -368,6 +372,7 @@
     }
     .badge.reply { background: #1e3a55; color: #9ec9ef; }
     .badge.quote { background: #4a3218; color: #f0c48a; }
+    .badge.retweet { background: #2e2550; color: #d4c4ff; }
     .badge.ancre { background: #243a1c; color: #b7e39a; }
     .detail-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.65rem; }
     a { color: var(--accent); }
@@ -405,6 +410,7 @@
     .dtweet.ancre .dav { border-color: var(--ancre); }
     .dtweet.reply .dav { border-color: var(--reply); }
     .dtweet.quote .dav { border-color: var(--quote); }
+    .dtweet.retweet .dav { border-color: var(--retweet); }
     .dtweet .dmeta {
       display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem;
       margin-bottom: 0.2rem;
@@ -453,6 +459,7 @@
     }
     #hoverTip .ht-badge.reply { background: #1e3a55; color: #9ec9ef; }
     #hoverTip .ht-badge.quote { background: #4a3218; color: #f0c48a; }
+    #hoverTip .ht-badge.retweet { background: #2e2550; color: #d4c4ff; }
     #hoverTip .ht-badge.ancre { background: #243a1c; color: #b7e39a; }
     #hoverTip .ht-date {
       padding: 0.35rem 0.8rem 0;
@@ -552,7 +559,7 @@
             </button>
             <button type="button" class="view-card" data-view-mode="rt" role="radio" aria-checked="false">
               <span class="vt">RT only</span>
-              <span class="vs">Originales · taille ∝ interactions</span>
+              <span class="vs">Originales + arcs retweet</span>
             </button>
             <button type="button" class="view-card" data-view-mode="rp_quote" role="radio" aria-checked="false">
               <span class="vt">Reply + Quote</span>
@@ -560,10 +567,10 @@
             </button>
             <button type="button" class="view-card active" data-view-mode="full" role="radio" aria-checked="true">
               <span class="vt">RT + Reply + Quote</span>
-              <span class="vs">Cascades + taille ∝ interactions</span>
+              <span class="vs">RT + RP + QT · taille ∝ interactions</span>
             </button>
           </div>
-          <p class="hint" id="viewModeHint">Vue complète : cascades RP+Quote, taille = RT + réponses + citations + likes.</p>
+          <p class="hint" id="viewModeHint">Vue complète : retweets du corpus, réponses et citations. Taille = RT+RP+QT+likes.</p>
           <p id="filterStats"></p>
         </div>
         <div class="mode-block">
@@ -842,6 +849,9 @@
       if (!childrenMap[e.source].includes(e.target)) childrenMap[e.source].push(e.target);
       parentOf[e.target] = e.source;
     }
+    if (rtByParent) {
+      for (const n of tree.nodes) injectRetweetsForParent(n.id);
+    }
   }
 
   const treeLoading = new Set();
@@ -944,8 +954,10 @@
     reply: "#5b9bd5",
     quote: "#e8a45a",
     ancre: "#9ad67a",
+    retweet: "#c4b5fd",
     edgeReply: "rgba(91,155,213,0.65)",
     edgeQuote: "rgba(232,164,90,0.8)",
+    edgeRetweet: "rgba(196,181,253,0.75)",
     axis: "rgba(139,154,171,0.4)",
     label: "rgba(180,194,210,0.95)",
     expand: "#2a3d52",
@@ -957,9 +969,22 @@
   /** base | rt | rp_quote | full */
   let viewMode = "full";
   let overlays = null;
+  /** @type {Record<string, any[]>|null} */
+  let rtByParent = null;
+  let rtMeta = null;
+  const rtInjectedParents = new Set();
 
-  function viewShowsChildren() {
+  function viewShowsReplies() {
     return viewMode === "rp_quote" || viewMode === "full";
+  }
+  function viewShowsQuotes() {
+    return viewMode === "rp_quote" || viewMode === "full";
+  }
+  function viewShowsRetweets() {
+    return viewMode === "rt" || viewMode === "full";
+  }
+  function viewShowsChildren() {
+    return viewShowsReplies() || viewShowsQuotes() || viewShowsRetweets();
   }
   function viewDrawsEdges() {
     return viewShowsChildren();
@@ -981,6 +1006,7 @@
   function typeColor(rel) {
     if (rel === "quote") return COLORS.quote;
     if (rel === "ancre") return COLORS.ancre;
+    if (rel === "retweet") return COLORS.retweet;
     return COLORS.reply;
   }
 
@@ -1008,7 +1034,9 @@
   function colorForEdge(edge) {
     const node = edge.t || null;
     if (colorMode === "type") {
-      return edge.relation === "quote" ? COLORS.edgeQuote : COLORS.edgeReply;
+      if (edge.relation === "quote") return COLORS.edgeQuote;
+      if (edge.relation === "retweet") return COLORS.edgeRetweet;
+      return COLORS.edgeReply;
     }
     const css = colorForNode(node);
     if (css.startsWith("rgb(")) return css.replace("rgb(", "rgba(").replace(")", ",0.82)");
@@ -1027,13 +1055,13 @@
       btn.classList.toggle("active", on);
       btn.setAttribute("aria-checked", on ? "true" : "false");
     });
-    el.showReply.checked = viewShowsChildren();
-    el.showQuote.checked = viewShowsChildren();
+    el.showReply.checked = viewShowsReplies();
+    el.showQuote.checked = viewShowsQuotes();
     const hints = {
-      base: "Originales seulement, sans arcs. Tailles peu contrastées — lecture de la chronologie.",
-      rt: "Originales seulement. Taille = RT+RP+QT+likes, sans cascades.",
-      rp_quote: "Réponses et citations en arcs. La taille reste modérée.",
-      full: "Cascades RP+Quote, taille = RT+RP+QT+likes — vue complète.",
+      base: "Originales seulement, sans arcs ni enfants.",
+      rt: "Originales et arcs retweet (RT du corpus). Pas de RP/QT.",
+      rp_quote: "Réponses et citations en arcs. Pas de retweets.",
+      full: "Retweets + réponses + citations. Taille = RT+RP+QT+likes.",
     };
     const hint = document.getElementById("viewModeHint");
     if (hint) hint.textContent = hints[viewMode] || "";
@@ -1060,7 +1088,8 @@
       box.innerHTML = `
         <span class="lg-item"><i class="swatch ancre"></i>ancre</span>
         <span class="lg-item"><i class="swatch reply"></i>réponse</span>
-        <span class="lg-item"><i class="swatch quote"></i>citation</span>`;
+        <span class="lg-item"><i class="swatch quote"></i>citation</span>
+        <span class="lg-item"><i class="swatch retweet"></i>retweet</span>`;
       return;
     }
     if (colorMode === "louvain") {
@@ -1084,20 +1113,83 @@
     let reply = 0;
     let quote = 0;
     let ancre = 0;
+    let retweet = 0;
     for (const id of Object.keys(byId)) {
       const n = byId[id];
       if (!n) continue;
       if (n.relation === "quote") quote += 1;
       else if (n.relation === "ancre") ancre += 1;
       else if (n.relation === "reply") reply += 1;
+      else if (n.relation === "retweet") retweet += 1;
     }
     const labels = { base: "sans liens", rt: "RT only", rp_quote: "RP+QT", full: "RT+RP+QT" };
-    const shownR = viewShowsChildren() ? reply : 0;
-    const shownQ = viewShowsChildren() ? quote : 0;
+    const shownR = viewShowsReplies() ? reply : 0;
+    const shownQ = viewShowsQuotes() ? quote : 0;
+    const shownRt = viewShowsRetweets() ? retweet : 0;
     box.textContent =
-      `Vue ${labels[viewMode] || viewMode} · ancre ${fmtNum(ancre)} · RP ${fmtNum(reply)} · QT ${fmtNum(quote)}` +
-      (viewShowsChildren() ? ` · enfants affichés ${fmtNum(shownR + shownQ)}` : " · aucun enfant") +
-      (overlays ? ` · Louvain ${fmtNum(overlays.n_louvain)} · pays ${fmtNum(overlays.n_country)}` : "");
+      `Vue ${labels[viewMode] || viewMode} · ancre ${fmtNum(ancre)} · RP ${fmtNum(reply)} · QT ${fmtNum(quote)} · RT ${fmtNum(retweet)}` +
+      (viewShowsChildren()
+        ? ` · affichés RP ${fmtNum(shownR)} / QT ${fmtNum(shownQ)} / RT ${fmtNum(shownRt)}`
+        : " · aucun enfant") +
+      (overlays ? ` · Louvain ${fmtNum(overlays.n_louvain)} · pays ${fmtNum(overlays.n_country)}` : "") +
+      (rtMeta ? ` · index RT ${fmtNum(rtMeta.n_retweets || 0)}` : "");
+  }
+
+  function injectRetweetsForParent(parentId) {
+    if (!rtByParent || !parentId || rtInjectedParents.has(parentId)) return 0;
+    const rows = rtByParent[parentId];
+    if (!rows || !rows.length) {
+      rtInjectedParents.add(parentId);
+      return 0;
+    }
+    const rootId = rootOf[parentId] || parentId;
+    childrenMap[parentId] = childrenMap[parentId] || [];
+    let added = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const id = String(row[0]);
+      if (!id || byId[id]) continue;
+      byId[id] = {
+        id,
+        author: String(row[1] || ""),
+        t: Number(row[2] || 0),
+        iso: String(row[3] || ""),
+        rt: Number(row[4] || 0),
+        replies: Number(row[5] || 0),
+        quotes: Number(row[6] || 0),
+        likes: Number(row[7] || 0),
+        text: String(row[8] || ""),
+        relation: "retweet",
+        niveau: (byId[parentId] && byId[parentId].niveau != null) ? (byId[parentId].niveau + 1) : 1,
+        depth: (byId[parentId] && byId[parentId].depth != null) ? (byId[parentId].depth + 1) : 1,
+        parent_id: parentId,
+        racine_id: rootId,
+        in_corpus: true,
+        subtree_rt: Number(row[4] || 0),
+        subtree_size: 1,
+        conversation_id: (byId[parentId] && byId[parentId].conversation_id) || parentId,
+      };
+      rootOf[id] = rootId;
+      parentOf[id] = parentId;
+      childrenMap[id] = childrenMap[id] || [];
+      if (!childrenMap[parentId].includes(id)) childrenMap[parentId].push(id);
+      bumpNodeAuthor(byId[id]);
+      added += 1;
+    }
+    rtInjectedParents.add(parentId);
+    return added;
+  }
+
+  function injectRetweetsForLoadedNodes() {
+    if (!rtByParent) return 0;
+    let n = 0;
+    const ids = Object.keys(byId);
+    for (let i = 0; i < ids.length; i++) {
+      const node = byId[ids[i]];
+      if (!node || node.relation === "retweet") continue;
+      n += injectRetweetsForParent(ids[i]);
+    }
+    return n;
   }
 
   async function loadOverlays() {
@@ -1109,9 +1201,22 @@
       overlays = null;
       console.warn("author_overlays.json indisponible", err);
     }
+    try {
+      const resp = await fetch("./rt_children.json", { cache: "no-cache" });
+      if (!resp.ok) throw new Error(String(resp.status));
+      const payload = await resp.json();
+      rtByParent = payload.by_parent || {};
+      rtMeta = payload.meta || null;
+      injectRetweetsForLoadedNodes();
+    } catch (err) {
+      rtByParent = null;
+      rtMeta = null;
+      console.warn("rt_children.json indisponible", err);
+    }
     syncColorModeButtons();
     updateFilterStats();
-    draw();
+    if (viewShowsChildren()) refreshForest();
+    else draw();
   }
 
   /** Seuil : labels @ et pastilles +N seulement assez zoomé */
@@ -1282,9 +1387,10 @@
   function allowedChild(node) {
     if (!node) return false;
     if (node.relation === "ancre") return true;
-    if (node.relation === "reply" && !el.showReply.checked) return false;
-    if (node.relation === "quote" && !el.showQuote.checked) return false;
-    if (el.hideZero.checked && node.rt === 0) return false;
+    if (node.relation === "reply" && !viewShowsReplies()) return false;
+    if (node.relation === "quote" && !viewShowsQuotes()) return false;
+    if (node.relation === "retweet" && !viewShowsRetweets()) return false;
+    if (el.hideZero.checked && (node.rt || 0) === 0 && engagementOf(node) === 0) return false;
     return true;
   }
 
@@ -2507,17 +2613,25 @@
     syncColorModeButtons();
     draw();
   });
-  document.getElementById("viewModeRow").addEventListener("click", (ev) => {
+  document.getElementById("viewModeRow").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-view-mode]");
     if (!btn) return;
     const next = btn.getAttribute("data-view-mode") || "full";
     if (next === viewMode) return;
     viewMode = next;
     syncViewModeButtons();
-    if (!viewShowsChildren()) {
-      resetExpansion();
+    // Ne pas vider l'expansion : les enfants restent en mémoire et réapparaissent
+    // dès qu'une vue avec RP/QT/RT est réactivée.
+    if (viewShowsChildren()) {
+      injectRetweetsForLoadedNodes();
+      if (expanded.size === 0) {
+        await expandAll();
+      } else {
+        refreshForest();
+      }
+    } else {
+      refreshForest();
     }
-    refreshForest();
     updateFilterStats();
   });
 
