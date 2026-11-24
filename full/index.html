@@ -1074,8 +1074,8 @@
     });
     const hints = {
       type: "Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.",
-      louvain: "Communauté Louvain de l’auteur sur le graphe de retweets HMPV. Compte hors partition → gris.",
-      geo: "Pays de l’auteur (lieu profil / tweet). Inconnu → gris.",
+      louvain: "Communauté Louvain sur le graphe RT HMPV seulement. Hors graphe RT → gris (donnée absente, pas un bug).",
+      geo: "Pays = lieu profil ∪ lieu tagué publication. Sinon gris (souvent vraiment indisponible ; free-text non géocodé possible).",
     };
     const hint = document.getElementById("colorModeHint");
     if (hint) hint.textContent = hints[colorMode] || "";
