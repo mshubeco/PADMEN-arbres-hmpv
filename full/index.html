@@ -580,6 +580,7 @@
             <button type="button" class="mode-btn" data-color-mode="louvain">Louvain</button>
             <button type="button" class="mode-btn" data-color-mode="geo">Pays</button>
             <button type="button" class="mode-btn" data-color-mode="age">Âge compte</button>
+            <button type="button" class="mode-btn" data-color-mode="lang">Langue</button>
           </div>
           <p class="hint" id="colorModeHint">Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.</p>
         </div>
@@ -961,7 +962,7 @@
     unknown: "#788696",
   };
 
-  let colorMode = "type"; // type | louvain | geo | age
+  let colorMode = "type"; // type | louvain | geo | age | lang
   /** base | rt | rp_quote | full — défaut = cascades RP/QT */
   let viewMode = "rp_quote";
   let overlays = null;
@@ -1064,6 +1065,17 @@
       if (year == null) return COLORS.unknown;
       return rgbCss(ageColorRgb(year));
     }
+    if (colorMode === "lang") {
+      if (!overlays) return COLORS.unknown;
+      let code = (node && node.lang) || (overlays.lang_post && overlays.lang_post[node.id]) || null;
+      if (!code) code = overlays.lang && overlays.lang[key];
+      if (!code) return COLORS.unknown;
+      code = String(code).toLowerCase();
+      if (code === "eng") code = "en";
+      if (code === "fra" || code === "fre") code = "fr";
+      const rgb = (overlays.lang_color && overlays.lang_color[code]) || overlays.unknown_color;
+      return rgbCss(rgb);
+    }
     return typeColor(node.relation);
   }
 
@@ -1112,6 +1124,7 @@
       louvain: "Communauté Louvain sur le graphe RT HMPV seulement. Hors graphe RT → gris (donnée absente, pas un bug).",
       geo: "Pays = lieu profil ∪ lieu tagué publication. Sinon gris (souvent vraiment indisponible ; free-text non géocodé possible).",
       age: "Année de création du compte (snowflake). Marine = ancien → corail = récent. Inconnu → gris.",
+      lang: "Langue du tweet (EN bleu / FR rouge). Sinon langue dominante de l’auteur. Indéterminé → gris.",
     };
     const hint = document.getElementById("colorModeHint");
     if (hint) hint.textContent = hints[colorMode] || "";
@@ -1153,6 +1166,18 @@
         `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>inconnu</span>`;
       return;
     }
+    if (colorMode === "lang") {
+      const prefer = ["en", "fr", "es", "hi", "in", "pt", "de", "und"];
+      const colors = (overlays && overlays.lang_color) || {};
+      const labels = (overlays && overlays.lang_label) || {};
+      const keys = prefer.filter((k) => colors[k]).concat(
+        Object.keys(colors).filter((k) => !prefer.includes(k)).slice(0, 4)
+      );
+      box.innerHTML = keys.map((code) =>
+        `<span class="lg-item"><i class="swatch" style="background:${rgbCss(colors[code])}"></i>${escapeHtml(labels[code] || code)}</span>`
+      ).join("") + `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>inconnu</span>`;
+      return;
+    }
     const codes = Object.keys((overlays && overlays.country_color) || {}).slice(0, 10);
     box.innerHTML = codes.map((code) => {
       const label = (overlays.country_label && overlays.country_label[code]) || code;
@@ -1187,7 +1212,8 @@
         : " · aucun enfant") +
       (overlays
         ? ` · Louvain ${fmtNum(overlays.n_louvain)} · pays ${fmtNum(overlays.n_country)}` +
-          (overlays.n_age != null ? ` · âge ${fmtNum(overlays.n_age)}` : "")
+          (overlays.n_age != null ? ` · âge ${fmtNum(overlays.n_age)}` : "") +
+          (overlays.n_lang_authors != null ? ` · lang ${fmtNum(overlays.n_lang_authors)}` : "")
         : "") +
       (rtMeta ? ` · index RT ${fmtNum(rtMeta.n_retweets || 0)}` : "");
   }
