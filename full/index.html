@@ -90,6 +90,37 @@
       font-size: 0.78rem; color: var(--muted);
     }
     .row-checks label { display: flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+    .mode-block { display: flex; flex-direction: column; gap: 0.35rem; }
+    .mode-block .hint {
+      font-size: 0.68rem; color: var(--muted); line-height: 1.35; margin: 0;
+    }
+    .mode-row {
+      display: flex; flex-wrap: wrap; gap: 0.3rem;
+    }
+    .mode-btn {
+      appearance: none; border: 1px solid var(--border);
+      background: var(--panel2); color: var(--muted);
+      border-radius: 999px; padding: 0.28rem 0.55rem;
+      font: inherit; font-size: 0.72rem; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.01em;
+    }
+    .mode-btn:hover { border-color: #4a6078; color: var(--text); }
+    .mode-btn.active {
+      background: #243041; border-color: #6ec6ff; color: #e7eef6;
+      box-shadow: 0 0 0 1px #6ec6ff44;
+    }
+    #colorLegend {
+      display: flex; flex-wrap: wrap; gap: 0.45rem 0.7rem;
+      max-width: 52vw; justify-content: flex-end;
+    }
+    #colorLegend .lg-item {
+      display: inline-flex; align-items: center; gap: 0.28rem;
+      white-space: nowrap;
+    }
+    #filterStats {
+      font-size: 0.68rem; color: var(--muted); margin: 0.15rem 0 0;
+      font-family: var(--mono);
+    }
     #treeList { flex: 1; overflow: auto; padding: 0.35rem; }
     .tree-item {
       display: block; width: 100%; text-align: left;
@@ -459,19 +490,35 @@
   <header>
     <h1>PADMEN · HMPV Full</h1>
     <div class="meta" id="headerMeta">Chargement…</div>
-    <div class="legend">
-      <span><i class="swatch ancre"></i>ancre</span>
-      <span><i class="swatch reply"></i>reply</span>
-      <span><i class="swatch quote"></i>quote</span>
-      <span><i class="swatch edge-reply"></i>arc ∝ RT enfant (0–3 = fin)</span>
-      <span><i class="swatch edge-quote"></i>arc quote</span>
-      <span>↓ temps · nœuds = avatar (taille ∝ RT) · labels si zoomé</span>
+    <div class="legend" id="headerLegend">
+      <div id="colorLegend"></div>
+      <span>↓ temps · taille ∝ RT · arcs = couleur du nœud enfant</span>
     </div>
   </header>
 
   <aside>
     <div class="panel-head">
       <div class="controls">
+        <div class="mode-block">
+          <label>Couleur des nœuds et arcs</label>
+          <div class="mode-row" id="colorModeRow" role="group" aria-label="Mode de couleur">
+            <button type="button" class="mode-btn active" data-color-mode="type">Type (RP / Quote)</button>
+            <button type="button" class="mode-btn" data-color-mode="louvain">Communauté Louvain</button>
+            <button type="button" class="mode-btn" data-color-mode="geo">Pays</button>
+          </div>
+          <p class="hint" id="colorModeHint">Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.</p>
+        </div>
+        <div class="mode-block">
+          <label>Arcs affichés (enfants)</label>
+          <div class="mode-row" id="edgeModeRow" role="group" aria-label="Types d'enfants affichés">
+            <button type="button" class="mode-btn" data-edge-mode="rt" title="Uniquement les originales — les RT ne sont pas des arcs">Ancres</button>
+            <button type="button" class="mode-btn" data-edge-mode="rp">RP</button>
+            <button type="button" class="mode-btn" data-edge-mode="quote">Quote</button>
+            <button type="button" class="mode-btn active" data-edge-mode="rp_quote">RP+Quote</button>
+          </div>
+          <p class="hint">Cet arbre n’a pas d’arcs RT : un retweet grossit le nœud, il ne crée pas de branche. « Ancres » = forêt repliée sur les originales.</p>
+          <p id="filterStats"></p>
+        </div>
         <div>
           <label for="sortBy">Trier les arbres</label>
           <select id="sortBy">
@@ -489,11 +536,11 @@
           <input id="search" type="search" placeholder="auteur, texte, id…" />
         </div>
         <div class="row-checks">
-          <label><input type="checkbox" id="showReply" checked /> replies</label>
-          <label><input type="checkbox" id="showQuote" checked /> quotes</label>
           <label><input type="checkbox" id="hideZero" /> masquer RT=0</label>
-          <label><input type="checkbox" id="sizeSubtree" /> taille = sous-arbre</label>
+          <label><input type="checkbox" id="sizeSubtree" /> taille = ΣRT sous-arbre</label>
         </div>
+        <input type="checkbox" id="showReply" checked hidden />
+        <input type="checkbox" id="showQuote" checked hidden />
       </div>
     </div>
     <div class="panel-head" style="border-top:1px solid var(--border)">
@@ -847,7 +894,147 @@
     label: "rgba(180,194,210,0.95)",
     expand: "#2a3d52",
     expandStroke: "#6ec6ff",
+    unknown: "#788696",
   };
+
+  let colorMode = "type"; // type | louvain | geo
+  let edgeMode = "rp_quote"; // rt | rp | quote | rp_quote
+  let overlays = null;
+
+  function rgbCss(rgb, alpha) {
+    const [r, g, b] = rgb || [120, 130, 140];
+    if (alpha == null) return `rgb(${r},${g},${b})`;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  function authorKeyOf(node) {
+    return String((node && node.author) || "").replace(/^@/, "").toLowerCase();
+  }
+
+  function typeColor(rel) {
+    if (rel === "quote") return COLORS.quote;
+    if (rel === "ancre") return COLORS.ancre;
+    return COLORS.reply;
+  }
+
+  function colorForNode(node) {
+    if (!node) return COLORS.unknown;
+    if (colorMode === "type") return typeColor(node.relation);
+    const key = authorKeyOf(node);
+    if (colorMode === "louvain") {
+      if (!overlays) return COLORS.unknown;
+      const cid = overlays.com[key];
+      if (cid == null) return COLORS.unknown;
+      const rgb = overlays.com_color[String(cid)] || overlays.unknown_color;
+      return rgbCss(rgb);
+    }
+    if (colorMode === "geo") {
+      if (!overlays) return COLORS.unknown;
+      const code = overlays.country[key];
+      if (!code) return COLORS.unknown;
+      const rgb = overlays.country_color[code] || overlays.unknown_color;
+      return rgbCss(rgb);
+    }
+    return typeColor(node.relation);
+  }
+
+  function colorForEdge(edge) {
+    const node = edge.t || null;
+    if (colorMode === "type") {
+      return edge.relation === "quote" ? COLORS.edgeQuote : COLORS.edgeReply;
+    }
+    const css = colorForNode(node);
+    if (css.startsWith("rgb(")) return css.replace("rgb(", "rgba(").replace(")", ",0.82)");
+    if (css.startsWith("#") && css.length === 7) {
+      const r = parseInt(css.slice(1, 3), 16);
+      const g = parseInt(css.slice(3, 5), 16);
+      const b = parseInt(css.slice(5, 7), 16);
+      return `rgba(${r},${g},${b},0.82)`;
+    }
+    return css;
+  }
+
+  function syncEdgeModeButtons() {
+    document.querySelectorAll("[data-edge-mode]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-edge-mode") === edgeMode);
+    });
+    el.showReply.checked = edgeMode === "rp" || edgeMode === "rp_quote";
+    el.showQuote.checked = edgeMode === "quote" || edgeMode === "rp_quote";
+  }
+
+  function syncColorModeButtons() {
+    document.querySelectorAll("[data-color-mode]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-color-mode") === colorMode);
+    });
+    const hints = {
+      type: "Ancre / réponse / citation. Les arcs prennent la couleur de l’enfant.",
+      louvain: "Communauté Louvain de l’auteur sur le graphe de retweets HMPV. Compte hors partition → gris.",
+      geo: "Pays de l’auteur (lieu profil / tweet). Inconnu → gris.",
+    };
+    const hint = document.getElementById("colorModeHint");
+    if (hint) hint.textContent = hints[colorMode] || "";
+    renderColorLegend();
+  }
+
+  function renderColorLegend() {
+    const box = document.getElementById("colorLegend");
+    if (!box) return;
+    if (colorMode === "type") {
+      box.innerHTML = `
+        <span class="lg-item"><i class="swatch ancre"></i>ancre</span>
+        <span class="lg-item"><i class="swatch reply"></i>réponse</span>
+        <span class="lg-item"><i class="swatch quote"></i>citation</span>`;
+      return;
+    }
+    if (colorMode === "louvain") {
+      const tops = (overlays && overlays.com_top) || [];
+      box.innerHTML = tops.slice(0, 8).map((c) =>
+        `<span class="lg-item"><i class="swatch" style="background:${rgbCss(c.color)}"></i>C${c.id} · ${fmtNum(c.n)}</span>`
+      ).join("") + `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>hors partition</span>`;
+      return;
+    }
+    const codes = Object.keys((overlays && overlays.country_color) || {}).slice(0, 10);
+    box.innerHTML = codes.map((code) => {
+      const label = (overlays.country_label && overlays.country_label[code]) || code;
+      const rgb = overlays.country_color[code];
+      return `<span class="lg-item"><i class="swatch" style="background:${rgbCss(rgb)}"></i>${escapeHtml(label)}</span>`;
+    }).join("") + `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>inconnu</span>`;
+  }
+
+  function updateFilterStats() {
+    const box = document.getElementById("filterStats");
+    if (!box) return;
+    let reply = 0;
+    let quote = 0;
+    let ancre = 0;
+    for (const id of Object.keys(byId)) {
+      const n = byId[id];
+      if (!n) continue;
+      if (n.relation === "quote") quote += 1;
+      else if (n.relation === "ancre") ancre += 1;
+      else if (n.relation === "reply") reply += 1;
+    }
+    const shownR = el.showReply.checked ? reply : 0;
+    const shownQ = el.showQuote.checked ? quote : 0;
+    box.textContent =
+      `Chargés · ancre ${fmtNum(ancre)} · RP ${fmtNum(reply)} · QT ${fmtNum(quote)} · ` +
+      `affichés enfants RP ${fmtNum(shownR)} / QT ${fmtNum(shownQ)}` +
+      (overlays ? ` · Louvain ${fmtNum(overlays.n_louvain)} · pays ${fmtNum(overlays.n_country)}` : "");
+  }
+
+  async function loadOverlays() {
+    try {
+      const resp = await fetch("./author_overlays.json", { cache: "no-cache" });
+      if (!resp.ok) throw new Error(String(resp.status));
+      overlays = await resp.json();
+    } catch (err) {
+      overlays = null;
+      console.warn("author_overlays.json indisponible", err);
+    }
+    syncColorModeButtons();
+    updateFilterStats();
+    draw();
+  }
 
   /** Seuil : labels @ et pastilles +N seulement assez zoomé */
   const LABEL_ZOOM = 0.72;
@@ -939,6 +1126,11 @@
         + (selectedDescendants.has(n.id) ? " desc-hl" : "")
         + (n.id === hoverParentId ? " parent-hl" : "")
         + (focusOn && !inFocus ? " dimmed" : "");
+      if (colorMode !== "type" && !img.className.includes("selected") && !img.className.includes("desc-hl") && !img.className.includes("parent-hl")) {
+        img.style.borderColor = colorForNode(n);
+      } else if (colorMode === "type") {
+        img.style.borderColor = "";
+      }
       img.title = "@" + (n.author || "");
     }
     for (const [id, img] of avatarEls) {
@@ -950,9 +1142,7 @@
   }
 
   function nodeColor(rel) {
-    if (rel === "quote") return COLORS.quote;
-    if (rel === "ancre") return COLORS.ancre;
-    return COLORS.reply;
+    return typeColor(rel);
   }
 
   function fmtNum(n) {
@@ -1264,6 +1454,21 @@
   function setSelectedNode(id) {
     selectedId = id || null;
     selectedDescendants = id ? collectDescendants(id) : new Set();
+  }
+
+  /** Clique dans le vide : enlève la sélection sans replier ni dézoomer. */
+  function clearSelection() {
+    if (!selectedId) return;
+    setSelectedNode(null);
+    renderThread(null);
+    renderList();
+    el.detailTitle.textContent = "Aucune sélection";
+    el.detailBody.innerHTML = `<p class="empty">
+      Cliquez un nœud pour le détail et surligner sa descendance.
+      Cliquez dans le vide pour désélectionner.
+    </p>`;
+    el.status.textContent = `${fmtNum(activeRootIds().length)} originales · aucune sélection`;
+    draw();
   }
 
   function sortedIndex() {
@@ -1706,7 +1911,7 @@
         ctx.globalAlpha = 0.95;
         ctx.lineWidth = Math.max(edgeLineWidth(e) * 1.35, 1.8 / view.scale);
       } else {
-        ctx.strokeStyle = e.relation === "quote" ? COLORS.edgeQuote : COLORS.edgeReply;
+        ctx.strokeStyle = colorForEdge(e);
         let a = rt <= 0 ? 0.35 : rt <= 3 ? 0.55 : 0.85;
         if (focusOn) a *= 0.18;
         ctx.globalAlpha = a;
@@ -1730,7 +1935,7 @@
       const dim = focusOn && !isSel && !isDesc;
       ctx.beginPath();
       ctx.arc(n.px, n.py, n.r, 0, Math.PI * 2);
-      ctx.fillStyle = nodeColor(n.relation);
+      ctx.fillStyle = colorForNode(n);
       ctx.globalAlpha = dim ? 0.08 : (isSel || isDesc ? 0.55 : 0.35);
       ctx.fill();
       if (isSel || isDesc) {
@@ -2034,6 +2239,7 @@
     }
     const hit = hitNode(w.x, w.y);
     if (hit) showDetail(hit);
+    else clearSelection();
   });
   el.cv.addEventListener("pointermove", (ev) => {
     if (dragging && lastPtr) {
@@ -2171,9 +2377,28 @@
 
   el.sortBy.addEventListener("change", () => { renderList(); refreshForest(); });
   el.search.addEventListener("input", () => { renderList(); refreshForest(); });
-  for (const id of ["showReply", "showQuote", "hideZero", "sizeSubtree"]) {
-    document.getElementById(id).addEventListener("change", refreshForest);
+  for (const id of ["hideZero", "sizeSubtree"]) {
+    document.getElementById(id).addEventListener("change", () => {
+      refreshForest();
+      updateFilterStats();
+    });
   }
+
+  document.getElementById("colorModeRow").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-color-mode]");
+    if (!btn) return;
+    colorMode = btn.getAttribute("data-color-mode") || "type";
+    syncColorModeButtons();
+    draw();
+  });
+  document.getElementById("edgeModeRow").addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-edge-mode]");
+    if (!btn) return;
+    edgeMode = btn.getAttribute("data-edge-mode") || "rp_quote";
+    syncEdgeModeButtons();
+    refreshForest();
+    updateFilterStats();
+  });
 
   document.getElementById("btnExpand1").addEventListener("click", expandOneLevel);
   el.btnExpandAll.addEventListener("click", expandAll);
@@ -2185,11 +2410,14 @@
     draw();
   });
 
+  syncEdgeModeButtons();
+  syncColorModeButtons();
   buildGlobalMaps();
   resize();
   showForest();
+  loadOverlays();
   // Par défaut : tout déplié + dézoom forme globale
-  setTimeout(() => { expandAll(); }, 60);
+  setTimeout(() => { expandAll(); updateFilterStats(); }, 60);
 })();
   </script>
 </body>

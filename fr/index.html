@@ -1346,6 +1346,19 @@
     syncAvatarLayer();
   }
 
+  function clearSelection() {
+    if (!selectedId) return;
+    selectedId = null;
+    renderThread(null);
+    renderList();
+    el.detailTitle.textContent = "Aucune sélection";
+    el.detailBody.innerHTML = `<p class="empty">
+      Cliquez un nœud pour le détail.
+      Cliquez dans le vide pour désélectionner.
+    </p>`;
+    draw();
+  }
+
   function showDetail(n) {
     if (!n) return;
     selectedId = n.id;
@@ -1419,6 +1432,7 @@
     }
     const hit = hitNode(w.x, w.y);
     if (hit) showDetail(hit);
+    else clearSelection();
   });
   el.cv.addEventListener("pointermove", (ev) => {
     if (dragging && lastPtr) {
