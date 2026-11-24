@@ -675,14 +675,15 @@
   }
   FOREST.trees = FOREST.trees || {};
 
-  /** Toutes les originales de l'index (plus de filtre isolées RT<10). */
+  /** Ne garder que les originales avec au moins 5 retweets (racine). */
+  const MIN_ROOT_RT = 5;
   const indexRawN = (FOREST.index || []).length;
-  FOREST.index = FOREST.index || [];
+  FOREST.index = (FOREST.index || []).filter((r) => (r.root_rt ?? r.rt ?? 0) >= MIN_ROOT_RT);
 
   const meta = FOREST.meta;
   document.getElementById("headerMeta").textContent =
-    `${meta.label || "HMPV Full"} · ${FOREST.index.length.toLocaleString("fr-FR")} originales` +
-    ` · ${meta.generated_at}`;
+    `${meta.label || "HMPV Full"} · ${FOREST.index.length.toLocaleString("fr-FR")} affichées / ${indexRawN.toLocaleString("fr-FR")}` +
+    ` (RT racine ≥ ${MIN_ROOT_RT}) · ${meta.generated_at}`;
 
   const el = {
     list: document.getElementById("treeList"),
