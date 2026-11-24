@@ -1192,6 +1192,14 @@
     return n;
   }
 
+  /** Après injection RT, rouvre le plafond des nœuds déjà dépliés. */
+  function syncExpandedChildCaps() {
+    for (const id of expanded) {
+      const n = filteredChildren(id).length;
+      childCap.set(id, Math.max(n, 1));
+    }
+  }
+
   async function loadOverlays() {
     try {
       const resp = await fetch("./author_overlays.json", { cache: "no-cache" });
@@ -1208,6 +1216,7 @@
       rtByParent = payload.by_parent || {};
       rtMeta = payload.meta || null;
       injectRetweetsForLoadedNodes();
+      syncExpandedChildCaps();
     } catch (err) {
       rtByParent = null;
       rtMeta = null;
@@ -1215,8 +1224,6 @@
     }
     syncColorModeButtons();
     updateFilterStats();
-    if (viewShowsChildren()) refreshForest();
-    else draw();
   }
 
   /** Seuil : labels @ et pastilles +N seulement assez zoomé */
@@ -1950,8 +1957,10 @@
     draw();
   }
 
+  let expandAllRunning = false;
   async function expandAll() {
-    if (el.btnExpandAll?.disabled) return;
+    if (expandAllRunning) return;
+    expandAllRunning = true;
     const roots = activeRootIds();
     const n = roots.length;
     if (el.btnExpandAll) {
@@ -1973,6 +1982,8 @@
           );
         },
       });
+      // RT index peut arriver pendant le chargement : réinjecter puis ouvrir tous les enfants.
+      injectRetweetsForLoadedNodes();
       setLoadProgress(0.88, `Ouverture des nœuds (${fmtNum(n)} arbres)…`);
       let i = 0;
       for (const rootId of roots) {
@@ -1993,6 +2004,7 @@
           await new Promise((r) => setTimeout(r, 0));
         }
       }
+      syncExpandedChildCaps();
       setLoadProgress(1, "Mise en page · vue d'ensemble…");
       layoutVisible();
       updateStats();
@@ -2000,6 +2012,7 @@
       draw();
       el.status.textContent = `Déplié · ${fmtNum(n)} arbres · ${fmtNum(visibleNodeIds().size)} nœuds visibles · vue d'ensemble`;
     } finally {
+      expandAllRunning = false;
       hideLoadOverlay();
       if (el.btnExpandAll) {
         el.btnExpandAll.disabled = false;
@@ -2624,6 +2637,7 @@
     // dès qu'une vue avec RP/QT/RT est réactivée.
     if (viewShowsChildren()) {
       injectRetweetsForLoadedNodes();
+      syncExpandedChildCaps();
       if (expanded.size === 0) {
         await expandAll();
       } else {
@@ -2645,14 +2659,20 @@
     draw();
   });
 
-  syncViewModeButtons();
-  syncColorModeButtons();
-  buildGlobalMaps();
-  resize();
-  showForest();
-  loadOverlays();
-  // Par défaut : vue complète dépliée
-  setTimeout(() => { expandAll(); updateFilterStats(); }, 60);
+  async function boot() {
+    syncViewModeButtons();
+    syncColorModeButtons();
+    buildGlobalMaps();
+    resize();
+    showForest();
+    await loadOverlays();
+    // Vue complète par défaut : enfants RP/QT/RT visibles
+    if (viewShowsChildren()) {
+      await expandAll();
+    }
+    updateFilterStats();
+  }
+  boot();
 })();
   </script>
 </body>
