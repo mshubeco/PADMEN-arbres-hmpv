@@ -536,7 +536,7 @@
     <div class="meta" id="headerMeta">Chargement…</div>
     <div class="legend" id="headerLegend">
       <div id="colorLegend"></div>
-      <span>↓ temps · taille ∝ RT · arcs = couleur du nœud enfant</span>
+      <span>↓ temps · taille ∝ RT+RP+QT+likes · arcs = couleur du nœud enfant</span>
     </div>
   </header>
 
@@ -552,7 +552,7 @@
             </button>
             <button type="button" class="view-card" data-view-mode="rt" role="radio" aria-checked="false">
               <span class="vt">RT only</span>
-              <span class="vs">Originales · taille ∝ RT</span>
+              <span class="vs">Originales · taille ∝ interactions</span>
             </button>
             <button type="button" class="view-card" data-view-mode="rp_quote" role="radio" aria-checked="false">
               <span class="vt">Reply + Quote</span>
@@ -560,10 +560,10 @@
             </button>
             <button type="button" class="view-card active" data-view-mode="full" role="radio" aria-checked="true">
               <span class="vt">RT + Reply + Quote</span>
-              <span class="vs">Cascades + taille ∝ RT</span>
+              <span class="vs">Cascades + taille ∝ interactions</span>
             </button>
           </div>
-          <p class="hint" id="viewModeHint">Vue complète : réponses et citations en arcs, influence des RT dans la taille des nœuds.</p>
+          <p class="hint" id="viewModeHint">Vue complète : cascades RP+Quote, taille = RT + réponses + citations + likes.</p>
           <p id="filterStats"></p>
         </div>
         <div class="mode-block">
@@ -593,7 +593,7 @@
         </div>
         <div class="row-checks">
           <label><input type="checkbox" id="hideZero" /> masquer RT=0</label>
-          <label><input type="checkbox" id="sizeSubtree" /> taille = ΣRT sous-arbre</label>
+          <label><input type="checkbox" id="sizeSubtree" /> taille = Σ interactions sous-arbre</label>
         </div>
         <input type="checkbox" id="showReply" checked hidden />
         <input type="checkbox" id="showQuote" checked hidden />
@@ -1031,9 +1031,9 @@
     el.showQuote.checked = viewShowsChildren();
     const hints = {
       base: "Originales seulement, sans arcs. Tailles peu contrastées — lecture de la chronologie.",
-      rt: "Originales seulement. La taille suit les RT : carte d’influence, sans cascades.",
+      rt: "Originales seulement. Taille = RT+RP+QT+likes, sans cascades.",
       rp_quote: "Réponses et citations en arcs. La taille reste modérée.",
-      full: "Cascades RP+Quote et taille proportionnelle aux RT — vue complète.",
+      full: "Cascades RP+Quote, taille = RT+RP+QT+likes — vue complète.",
     };
     const hint = document.getElementById("viewModeHint");
     if (hint) hint.textContent = hints[viewMode] || "";
@@ -1119,33 +1119,58 @@
   /** imgs HTML par id de nœud (couche au-dessus du canvas) */
   const avatarEls = new Map();
 
+  function engagementOf(node) {
+    if (!node) return 0;
+    return (node.rt || 0) + (node.replies || 0) + (node.quotes || 0) + (node.likes || 0);
+  }
+
+  /** Σ interactions du nœud, ou de tout le sous-arbre déjà chargé. */
+  function sizeScoreOf(n) {
+    if (!n) return 0;
+    if (!el.sizeSubtree.checked) return engagementOf(n);
+    let sum = engagementOf(n);
+    const stack = (childrenMap[n.id] || []).slice();
+    const seen = new Set([n.id]);
+    while (stack.length) {
+      const id = stack.pop();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const child = byId[id];
+      if (!child) continue;
+      sum += engagementOf(child);
+      const kids = childrenMap[id] || [];
+      for (let i = 0; i < kids.length; i++) stack.push(kids[i]);
+    }
+    return sum;
+  }
+
   function radiusOf(n) {
-    const v = Math.max(0, (el.sizeSubtree.checked ? n.subtree_rt : n.rt) || 0);
+    const v = Math.max(0, sizeScoreOf(n));
     const strong = viewEmphasizesRt();
     let r;
     if (!strong) {
       // Base / Reply+Quote : contraste modéré
       if (v <= 0) r = 3.2;
-      else if (v <= 10) r = 3.2 + 0.55 * v;
+      else if (v <= 20) r = 3.2 + 0.35 * Math.sqrt(v);
       else {
-        const t = Math.min(1.2, Math.log1p(v) / Math.log1p(2000));
+        const t = Math.min(1.2, Math.log1p(v) / Math.log1p(8000));
         r = 6 + 22 * Math.pow(t, 1.35);
       }
       return Math.min(r, 48);
     }
     // RT only / Complet : bas compact, haut très étiré
     if (v <= 0) r = 1.8;
-    else if (v <= 5) r = 1.8 + 1.1 * v;
+    else if (v <= 15) r = 1.8 + 0.55 * Math.sqrt(v);
     else {
-      const t = Math.min(1.35, Math.log1p(v) / Math.log1p(800));
+      const t = Math.min(1.35, Math.log1p(v) / Math.log1p(25000));
       r = 4.5 + 14 * t + 110 * Math.pow(t, 2.55);
     }
-    if (v >= 30) r = Math.max(r, 14);
-    if (v >= 100) r = Math.max(r, 24);
-    if (v >= 400) r = Math.max(r, 42);
-    if (v >= 1500) r = Math.max(r, 70);
-    if (v >= 5000) r = Math.max(r, 105);
-    if (v >= 10000) r = Math.max(r, 135);
+    if (v >= 80) r = Math.max(r, 14);
+    if (v >= 300) r = Math.max(r, 24);
+    if (v >= 1200) r = Math.max(r, 42);
+    if (v >= 5000) r = Math.max(r, 70);
+    if (v >= 15000) r = Math.max(r, 105);
+    if (v >= 40000) r = Math.max(r, 135);
     const inf = authorInfluenceScore(n.author);
     if (inf > 0) {
       r *= 1 + 0.9 * Math.pow(inf, 1.1);
@@ -2185,11 +2210,6 @@
     ctx.font = "10px sans-serif";
     ctx.fillText("temps →", 0, 0);
     ctx.restore();
-  }
-
-  function engagementOf(node) {
-    if (!node) return 0;
-    return (node.rt || 0) * 3 + (node.likes || 0) + (node.replies || 0) + (node.quotes || 0);
   }
 
   function detailTweetCard(node, { role = "", selected = false } = {}) {
