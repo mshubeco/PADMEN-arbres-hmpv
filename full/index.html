@@ -422,11 +422,20 @@
       display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;
       overflow: hidden; white-space: pre-wrap; margin: 0.15rem 0 0.35rem;
     }
+    .dtweet.sel .dtext {
+      display: block; -webkit-line-clamp: unset; overflow: visible;
+    }
     .dtweet .deng {
       font-size: 0.7rem; color: var(--muted); font-family: var(--mono);
       display: flex; flex-wrap: wrap; gap: 0.55rem;
     }
     .dtweet .deng b { color: #c5d0dc; font-weight: 600; }
+    .dtweet .dextra {
+      margin-top: 0.4rem; padding-top: 0.35rem; border-top: 1px solid #2a3542;
+      font-size: 0.68rem; color: var(--muted); font-family: var(--mono);
+      display: flex; flex-direction: column; gap: 0.2rem; line-height: 1.35;
+    }
+    .dtweet .dextra b { color: #c5d0dc; font-weight: 600; }
     .dchildren { display: flex; flex-direction: column; gap: 0.45rem; }
     .dmore {
       font-size: 0.72rem; color: var(--muted); margin: 0.25rem 0 0;
@@ -2678,7 +2687,36 @@
     ctx.restore();
   }
 
-  function detailTweetCard(node, { role = "", selected = false } = {}) {
+  function detailExtraMeta(node) {
+    if (!node) return "";
+    const key = authorKeyOf(node);
+    const lang = resolveLangCode(node) || node.lang || "";
+    const langLabel = (overlays && overlays.lang_label && overlays.lang_label[lang]) || lang || "—";
+    const cc = (overlays && overlays.country && key) ? overlays.country[key] : "";
+    const ccLabel = cc
+      ? ((overlays.country_label && overlays.country_label[cc]) || cc)
+      : "—";
+    const cont = cc && overlays && overlays.country_continent
+      ? ((overlays.continent_label && overlays.continent_label[overlays.country_continent[cc]]) || overlays.country_continent[cc])
+      : "";
+    const com = (overlays && overlays.com && key != null) ? overlays.com[key] : null;
+    const year = (overlays && overlays.age_year && key) ? overlays.age_year[key] : null;
+    const rows = [
+      `id <b>${escapeHtml(String(node.id))}</b>`,
+      `niveau <b>${node.niveau != null ? node.niveau : "—"}</b> · profondeur <b>${node.depth != null ? node.depth : "—"}</b>`,
+      `langue <b>${escapeHtml(langLabel)}</b>`,
+      `pays <b>${escapeHtml(ccLabel)}${cont ? ` · ${escapeHtml(cont)}` : ""}</b>`,
+      `Louvain <b>${com != null ? `C${com}` : "—"}</b> · compte <b>${year != null ? year : "—"}</b>`,
+      `sous-arbre RT <b>${fmtNum(node.subtree_rt || 0)}</b> · taille <b>${fmtNum(node.subtree_size || 1)}</b>`,
+    ];
+    if (node.parent_id) rows.push(`parent_id <b>${escapeHtml(String(node.parent_id))}</b>`);
+    if (node.racine_id && node.racine_id !== node.id) {
+      rows.push(`racine_id <b>${escapeHtml(String(node.racine_id))}</b>`);
+    }
+    return `<div class="dextra">${rows.map((r) => `<div>${r}</div>`).join("")}</div>`;
+  }
+
+  function detailTweetCard(node, { role = "", selected = false, full = false } = {}) {
     if (!node) return "";
     const rel = node.relation || "reply";
     const cls = ["dtweet", rel];
@@ -2686,6 +2724,7 @@
     if (role === "root") cls.push("root-hl");
     if (role === "parent") cls.push("parent-hl");
     const url = `https://x.com/i/web/status/${node.id}`;
+    const showFull = full || selected;
     return `
       <button type="button" class="${cls.join(" ")}" data-focus-id="${node.id}">
         <img class="dav" src="${avatarImgUrl(node.author)}" alt=""
@@ -2705,6 +2744,7 @@
             <span>❝ <b>${fmtNum(node.quotes)}</b></span>
             <a href="${url}" target="_blank" rel="noopener" data-stop="1">Ouvrir</a>
           </div>
+          ${showFull ? detailExtraMeta(node) : ""}
         </div>
       </button>`;
   }
@@ -2747,8 +2787,21 @@
     const canExpandDeep = kids > 0 || hidden > 0 || unloadedDeep > 0;
 
     const parentBlock = parent
-      ? detailTweetCard(parent, { role: "parent", selected: parent.id === selectedId })
+      ? detailTweetCard(parent, { role: "parent", selected: false })
       : `<p class="empty" style="margin:0">Pas de parent — c’est l’originale (ancre).</p>`;
+    const isRoot = root && root.id === n.id;
+    const rootBlock = isRoot
+      ? ""
+      : `<section class="dsec">
+        <div class="dsec-label">Tweet original (ancre)</div>
+        ${detailTweetCard(root, { role: "root", selected: false })}
+      </section>`;
+    const parentSection = isRoot
+      ? ""
+      : `<section class="dsec">
+        <div class="dsec-label">Tweet parent</div>
+        ${parentBlock}
+      </section>`;
 
     el.detailBody.innerHTML = `
       <div class="detail-actions">
@@ -2757,19 +2810,17 @@
         <a href="https://x.com/i/web/status/${n.id}" target="_blank" rel="noopener">Sélection sur X</a>
       </div>
       <section class="dsec">
-        <div class="dsec-label">Tweet original (ancre)</div>
-        ${detailTweetCard(root, { role: "root", selected: root.id === selectedId })}
+        <div class="dsec-label">Publication sélectionnée</div>
+        ${detailTweetCard(n, { selected: true, full: true })}
       </section>
-      <section class="dsec">
-        <div class="dsec-label">Tweet parent</div>
-        ${parentBlock}
-      </section>
+      ${rootBlock}
+      ${parentSection}
       <section class="dsec">
         <div class="dsec-label">Enfants · top 10 engagement (${fmtNum(childNodes.length)})</div>
         <div class="dchildren">
           ${topKids.length
-            ? topKids.map((c) => detailTweetCard(c, { selected: c.id === selectedId })).join("")
-            : `<p class="empty" style="margin:0">Aucun enfant (reply/quote) sous ce nœud.</p>`}
+            ? topKids.map((c) => detailTweetCard(c, { selected: false })).join("")
+            : `<p class="empty" style="margin:0">Aucun enfant sous ce nœud.</p>`}
         </div>
         ${rest > 0 ? `<p class="dmore">+ ${fmtNum(rest)} autres enfants non listés</p>` : ""}
       </section>`;
