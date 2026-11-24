@@ -2973,7 +2973,7 @@
     const btn = ev.target.closest("[data-view-mode]");
     if (!btn) return;
     const next = btn.getAttribute("data-view-mode") || "rp_quote";
-    if (next === viewMode || viewSwitchRunning || expandAllRunning) return;
+    if (next === viewMode || viewSwitchRunning) return;
     viewSwitchRunning = true;
     const labels = {
       base: "Base · sans liens",
@@ -2983,6 +2983,11 @@
     };
     showLoadOverlay(`Changement de vue`, labels[next] || next);
     setLoadProgress(0.04, "Préparation…");
+    // Si un dépliage tourne encore (boot), attendre plutôt qu'ignorer le clic
+    while (expandAllRunning) {
+      setLoadProgress(0.04, "Attente fin dépliage en cours…");
+      await new Promise((r) => setTimeout(r, 80));
+    }
     await new Promise((r) => setTimeout(r, 40));
     try {
       viewMode = next;
