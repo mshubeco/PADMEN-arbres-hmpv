@@ -561,16 +561,16 @@
               <span class="vt">RT only</span>
               <span class="vs">Originales + arcs retweet</span>
             </button>
-            <button type="button" class="view-card" data-view-mode="rp_quote" role="radio" aria-checked="false">
+            <button type="button" class="view-card active" data-view-mode="rp_quote" role="radio" aria-checked="true">
               <span class="vt">Reply + Quote</span>
               <span class="vs">Cascades · arcs RP / QT</span>
             </button>
-            <button type="button" class="view-card active" data-view-mode="full" role="radio" aria-checked="true">
+            <button type="button" class="view-card" data-view-mode="full" role="radio" aria-checked="false">
               <span class="vt">RT + Reply + Quote</span>
               <span class="vs">RT + RP + QT · taille ∝ interactions</span>
             </button>
           </div>
-          <p class="hint" id="viewModeHint">Vue complète : retweets du corpus, réponses et citations. Taille = RT+RP+QT+likes.</p>
+          <p class="hint" id="viewModeHint">Réponses et citations en arcs. Pas de retweets. Taille = RT+RP+QT+likes.</p>
           <p id="filterStats"></p>
         </div>
         <div class="mode-block">
@@ -656,9 +656,8 @@
     </div>
     <div class="body" id="detailBody">
       <p class="empty">
-        Par défaut : toutes les publications originales (ancres), en chronologie.
-        Cliquez une pastille <strong>+N</strong> pour déployer replies / quotes.
-        Les retweets ne sont pas des enfants — ils définissent la taille.
+        Par défaut : vue <strong>Reply + Quote</strong> dépliée (cascades RP/QT).
+        Changez de vue à gauche ; utilisez le zoom molette avec parcimonie (échelle bornée).
       </p>
     </div>
   </aside>
@@ -966,12 +965,13 @@
   };
 
   let colorMode = "type"; // type | louvain | geo
-  /** base | rt | rp_quote | full */
-  let viewMode = "full";
+  /** base | rt | rp_quote | full — défaut = cascades RP/QT */
+  let viewMode = "rp_quote";
   let overlays = null;
   /** @type {Record<string, any[]>|null} */
   let rtByParent = null;
   let rtMeta = null;
+  let rtIndexLoading = null;
   const rtInjectedParents = new Set();
 
   function viewShowsReplies() {
@@ -1200,7 +1200,7 @@
     }
   }
 
-  async function loadOverlays() {
+  async function loadAuthorOverlays() {
     try {
       const resp = await fetch("./author_overlays.json", { cache: "no-cache" });
       if (!resp.ok) throw new Error(String(resp.status));
@@ -1209,25 +1209,50 @@
       overlays = null;
       console.warn("author_overlays.json indisponible", err);
     }
-    try {
-      const resp = await fetch("./rt_children.json", { cache: "no-cache" });
-      if (!resp.ok) throw new Error(String(resp.status));
-      const payload = await resp.json();
-      rtByParent = payload.by_parent || {};
-      rtMeta = payload.meta || null;
-      injectRetweetsForLoadedNodes();
-      syncExpandedChildCaps();
-    } catch (err) {
-      rtByParent = null;
-      rtMeta = null;
-      console.warn("rt_children.json indisponible", err);
-    }
     syncColorModeButtons();
     updateFilterStats();
   }
 
+  /** Index RT (~28 Mo) : chargé seulement pour les vues RT / full. */
+  async function ensureRtIndex(opts = {}) {
+    if (rtByParent) return true;
+    if (rtIndexLoading) {
+      await rtIndexLoading;
+      return !!rtByParent;
+    }
+    const showUi = opts.showUi !== false;
+    rtIndexLoading = (async () => {
+      if (showUi) {
+        showLoadOverlay("Index retweets", "Téléchargement de rt_children.json…");
+        setLoadProgress(0.15, "Téléchargement index RT…");
+      }
+      try {
+        const resp = await fetch("./rt_children.json", { cache: "no-cache" });
+        if (!resp.ok) throw new Error(String(resp.status));
+        if (showUi) setLoadProgress(0.55, "Lecture index RT…");
+        const payload = await resp.json();
+        rtByParent = payload.by_parent || {};
+        rtMeta = payload.meta || null;
+        if (showUi) setLoadProgress(0.8, "Injection des retweets…");
+        injectRetweetsForLoadedNodes();
+        syncExpandedChildCaps();
+        if (showUi) setLoadProgress(1, `RT prêts · ${fmtNum(rtMeta?.n_retweets || 0)}`);
+      } catch (err) {
+        rtByParent = null;
+        rtMeta = null;
+        console.warn("rt_children.json indisponible", err);
+      } finally {
+        if (showUi) hideLoadOverlay();
+        rtIndexLoading = null;
+        updateFilterStats();
+      }
+    })();
+    await rtIndexLoading;
+    return !!rtByParent;
+  }
+
   /** Seuil : labels @ et pastilles +N seulement assez zoomé */
-  const LABEL_ZOOM = 0.72;
+  const LABEL_ZOOM = 0.45;
   /** imgs HTML par id de nœud (couche au-dessus du canvas) */
   const avatarEls = new Map();
 
@@ -1261,12 +1286,12 @@
     const strong = viewEmphasizesRt();
     let r;
     if (!strong) {
-      // Base / Reply+Quote : contraste modéré
-      if (v <= 0) r = 3.2;
-      else if (v <= 20) r = 3.2 + 0.35 * Math.sqrt(v);
+      // Base / Reply+Quote : plancher un peu plus haut pour rester lisible à l'échelle min
+      if (v <= 0) r = 5;
+      else if (v <= 20) r = 5 + 0.4 * Math.sqrt(v);
       else {
         const t = Math.min(1.2, Math.log1p(v) / Math.log1p(8000));
-        r = 6 + 22 * Math.pow(t, 1.35);
+        r = 8 + 22 * Math.pow(t, 1.35);
       }
       return Math.min(r, 48);
     }
@@ -1574,17 +1599,20 @@
     layoutNodes._spanH = spanH;
 
     layoutNodes.sort((a, b) => a.py - b.py || a.px - b.px);
-    for (let i = 0; i < layoutNodes.length; i++) {
-      for (let j = i + 1; j < layoutNodes.length; j++) {
-        const a = layoutNodes[i];
-        const b = layoutNodes[j];
-        if (b.py - a.py > Math.max(a.r + b.r + 8, 32)) break;
-        const minDx = a.r + b.r + 16;
-        const dx = b.px - a.px;
-        if (Math.abs(dx) < minDx) {
-          const push = (minDx - Math.abs(dx)) / 2 + 2;
-          if (dx >= 0) { b.px += push; a.px -= push; }
-          else { b.px -= push; a.px += push; }
+    // Anti-chevauchement X : trop coûteux au-delà de ~12k nœuds (forêt complète)
+    if (layoutNodes.length <= 12000) {
+      for (let i = 0; i < layoutNodes.length; i++) {
+        for (let j = i + 1; j < layoutNodes.length; j++) {
+          const a = layoutNodes[i];
+          const b = layoutNodes[j];
+          if (b.py - a.py > Math.max(a.r + b.r + 8, 32)) break;
+          const minDx = a.r + b.r + 16;
+          const dx = b.px - a.px;
+          if (Math.abs(dx) < minDx) {
+            const push = (minDx - Math.abs(dx)) / 2 + 2;
+            if (dx >= 0) { b.px += push; a.px -= push; }
+            else { b.px -= push; a.px += push; }
+          }
         }
       }
     }
@@ -1647,20 +1675,34 @@
 
   }
 
-  /** Full déplié = très grand canvas → dézoom agressif pour la forme globale */
-  const MIN_SCALE = 0.00012;
-  const MAX_SCALE = 4;
+  /**
+   * Ne jamais « tout faire rentrer » en hauteur : une forêt chronologique
+   * fait des centaines de kpx → échelle microscopique = nœuds invisibles.
+   * On cadre surtout sur la largeur, échelle lisible, ancre en haut.
+   */
+  const MIN_SCALE = 0.22;
+  const MAX_SCALE = 5;
 
   function fitView() {
     const rect = el.wrap.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
-    const sx = (rect.width - 32) / Math.max(contentW, 1);
-    const sy = (rect.height - 32) / Math.max(contentH, 1);
-    // marge ~8 % pour voir toute la silhouette sans coller aux bords
-    const raw = Math.min(sx, sy) * 0.92;
-    view.scale = Math.max(MIN_SCALE, Math.min(raw, 1.0));
+    const pad = 40;
+    const sx = (rect.width - pad) / Math.max(contentW, 1);
+    const sy = (rect.height - pad) / Math.max(contentH, 1);
+    // Priorité largeur ; n'utiliser le fit hauteur que s'il reste lisible
+    let raw = Math.min(sx, 1.15) * 0.94;
+    if (sy >= MIN_SCALE && contentH * raw <= rect.height - pad) {
+      raw = Math.min(sx, sy) * 0.92;
+    }
+    view.scale = Math.max(MIN_SCALE, Math.min(raw, 1.25));
     view.tx = (rect.width - contentW * view.scale) / 2;
-    view.ty = (rect.height - contentH * view.scale) / 2;
+    const scaledH = contentH * view.scale;
+    if (scaledH <= rect.height - 24) {
+      view.ty = (rect.height - scaledH) / 2;
+    } else {
+      // début de chronologie en haut — pan vertical pour le reste
+      view.ty = 20;
+    }
   }
 
   function resetExpansion() {
@@ -1958,34 +2000,45 @@
   }
 
   let expandAllRunning = false;
-  async function expandAll() {
+  async function expandAll(opts = {}) {
     if (expandAllRunning) return;
     expandAllRunning = true;
     const roots = activeRootIds();
     const n = roots.length;
+    const viewLabel = ({
+      base: "Base",
+      rt: "RT only",
+      rp_quote: "Reply + Quote",
+      full: "RT + Reply + Quote",
+    })[viewMode] || viewMode;
     if (el.btnExpandAll) {
       el.btnExpandAll.disabled = true;
       el.btnExpandAll.classList.add("loading");
       el.btnExpandAll.textContent = "Dépliage…";
     }
     showLoadOverlay(
-      "Tout déplier",
+      opts.title || `Dépliage · ${viewLabel}`,
       `Chargement de ${fmtNum(n)} arbre(s)…`
     );
     try {
+      if (viewShowsRetweets()) {
+        setLoadProgress(0.02, "Index retweets…");
+        await ensureRtIndex({ showUi: false });
+        injectRetweetsForLoadedNodes();
+      }
       await ensureTreesMany(roots, "Chargement des cascades", {
         concurrency: 40,
         onProgress: (frac, done, total, msg) => {
           setLoadProgress(
-            frac * 0.85,
+            0.05 + frac * 0.75,
             msg || `Chargement ${fmtNum(done)} / ${fmtNum(total)}`
           );
         },
       });
-      // RT index peut arriver pendant le chargement : réinjecter puis ouvrir tous les enfants.
-      injectRetweetsForLoadedNodes();
-      setLoadProgress(0.88, `Ouverture des nœuds (${fmtNum(n)} arbres)…`);
+      if (viewShowsRetweets()) injectRetweetsForLoadedNodes();
+      setLoadProgress(0.82, `Ouverture des nœuds (${fmtNum(n)} arbres)…`);
       let i = 0;
+      let edgeCount = 0;
       for (const rootId of roots) {
         const stack = [rootId];
         while (stack.length) {
@@ -1993,24 +2046,31 @@
           expanded.add(id);
           const kids = filteredChildren(id);
           childCap.set(id, Math.max(kids.length, 1));
+          edgeCount += kids.length;
           for (const c of kids) stack.push(c);
         }
         i += 1;
         if (i % 80 === 0 || i === n) {
           setLoadProgress(
-            0.88 + 0.12 * (i / Math.max(n, 1)),
-            `Dépliage structure ${fmtNum(i)} / ${fmtNum(n)}…`
+            0.82 + 0.12 * (i / Math.max(n, 1)),
+            `Dépliage structure ${fmtNum(i)} / ${fmtNum(n)} · ${fmtNum(edgeCount)} liens…`
           );
           await new Promise((r) => setTimeout(r, 0));
         }
       }
       syncExpandedChildCaps();
-      setLoadProgress(1, "Mise en page · vue d'ensemble…");
+      setLoadProgress(0.96, "Mise en page…");
       layoutVisible();
       updateStats();
       fitView();
       draw();
-      el.status.textContent = `Déplié · ${fmtNum(n)} arbres · ${fmtNum(visibleNodeIds().size)} nœuds visibles · vue d'ensemble`;
+      const vis = visibleNodeIds().size;
+      const nEdges = layoutEdges.length;
+      el.status.textContent =
+        `Déplié · ${viewLabel} · ${fmtNum(n)} arbres · ${fmtNum(vis)} nœuds · ${fmtNum(nEdges)} arcs · échelle ${view.scale.toFixed(2)}`;
+      if (nEdges === 0 && viewShowsChildren()) {
+        el.status.textContent += " · aucun arc (données enfants absentes ?)";
+      }
     } finally {
       expandAllRunning = false;
       hideLoadOverlay();
@@ -2591,10 +2651,11 @@
     const rect = el.cv.getBoundingClientRect();
     const mx = ev.clientX - rect.left;
     const my = ev.clientY - rect.top;
-    const before = 1 / view.scale;
-    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * (ev.deltaY < 0 ? 1.12 : 1 / 1.12)));
-    const wx = (mx - view.tx) * before;
-    const wy = (my - view.ty) * before;
+    const factor = ev.deltaY < 0 ? 1.08 : 1 / 1.08;
+    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, view.scale * factor));
+    if (Math.abs(next - view.scale) < 1e-9) return;
+    const wx = (mx - view.tx) / view.scale;
+    const wy = (my - view.ty) / view.scale;
     view.scale = next;
     view.tx = mx - wx * view.scale;
     view.ty = my - wy * view.scale;
@@ -2629,19 +2690,32 @@
   document.getElementById("viewModeRow").addEventListener("click", async (ev) => {
     const btn = ev.target.closest("[data-view-mode]");
     if (!btn) return;
-    const next = btn.getAttribute("data-view-mode") || "full";
+    const next = btn.getAttribute("data-view-mode") || "rp_quote";
     if (next === viewMode) return;
     viewMode = next;
     syncViewModeButtons();
-    // Ne pas vider l'expansion : les enfants restent en mémoire et réapparaissent
-    // dès qu'une vue avec RP/QT/RT est réactivée.
-    if (viewShowsChildren()) {
+    // Ne pas vider l'expansion : les enfants restent filtrés par vue.
+    if (viewShowsRetweets()) {
+      await ensureRtIndex({ showUi: true });
       injectRetweetsForLoadedNodes();
       syncExpandedChildCaps();
+    }
+    if (viewShowsChildren()) {
       if (expanded.size === 0) {
         await expandAll();
       } else {
-        refreshForest();
+        // Réouvrir les caps selon le filtre courant (RP/QT vs RT)
+        syncExpandedChildCaps();
+        // Si la vue RT/full n'a encore aucun enfant visible, déplier
+        let anyChild = false;
+        for (const id of expanded) {
+          if (filteredChildren(id).length) { anyChild = true; break; }
+        }
+        if (!anyChild) {
+          await expandAll();
+        } else {
+          refreshForest();
+        }
       }
     } else {
       refreshForest();
@@ -2650,7 +2724,7 @@
   });
 
   document.getElementById("btnExpand1").addEventListener("click", expandOneLevel);
-  el.btnExpandAll.addEventListener("click", expandAll);
+  el.btnExpandAll.addEventListener("click", () => expandAll());
   el.btnCollapseAll.addEventListener("click", collapseAll);
 
   window.addEventListener("resize", () => {
@@ -2665,10 +2739,17 @@
     buildGlobalMaps();
     resize();
     showForest();
-    await loadOverlays();
-    // Vue complète par défaut : enfants RP/QT/RT visibles
-    if (viewShowsChildren()) {
-      await expandAll();
+    showLoadOverlay("Reply + Quote", "Préparation de la forêt…");
+    setLoadProgress(0.04, "Couleurs auteurs (Louvain / pays)…");
+    try {
+      await loadAuthorOverlays();
+      setLoadProgress(0.12, "Démarrage du dépliage RP/QT…");
+      // Défaut : Reply + Quote entièrement déplié (sans index RT)
+      await expandAll({ title: "Reply + Quote · chargement" });
+    } catch (err) {
+      console.error(err);
+      hideLoadOverlay();
+      el.status.textContent = `Échec démarrage : ${err.message || err}`;
     }
     updateFilterStats();
   }
