@@ -1156,7 +1156,7 @@
     const hints = {
       type: "Toutes vues · ancre / réponse / citation / RT. Arcs = couleur de l’enfant.",
       louvain: "Toutes vues · communauté Louvain (graphe RT). Hors partition → gris.",
-      geo: "Toutes vues · pays (profil ∪ lieu tweet). Inconnu → gris.",
+      geo: "Toutes vues · pays regroupés par continent (Afrique verts, Asie orangés, Europe bleus…). Inconnu → gris.",
       age: "Toutes vues · année du compte. Marine = ancien → corail = récent. Inconnu → gris.",
       lang: "Toutes vues · langue du tweet (EN bleu / FR rouge). RT → langue du parent si besoin.",
     };
@@ -1212,11 +1212,20 @@
       ).join("") + `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>inconnu</span>`;
       return;
     }
-    const codes = Object.keys((overlays && overlays.country_color) || {}).slice(0, 10);
-    box.innerHTML = codes.map((code) => {
-      const label = (overlays.country_label && overlays.country_label[code]) || code;
-      const rgb = overlays.country_color[code];
-      return `<span class="lg-item"><i class="swatch" style="background:${rgbCss(rgb)}"></i>${escapeHtml(label)}</span>`;
+    // Légende continent (couleurs pays = variantes dans chaque famille)
+    const contOrder = ["africa", "asia", "europe", "americas", "oceania"];
+    const contLabels = (overlays && overlays.continent_label) || {
+      africa: "Afrique", asia: "Asie", europe: "Europe",
+      americas: "Amériques", oceania: "Océanie",
+    };
+    const contColors = (overlays && overlays.continent_color) || {};
+    const fallbackCont = {
+      africa: [35, 154, 84], asia: [209, 93, 21], europe: [79, 118, 216],
+      americas: [226, 50, 114], oceania: [161, 93, 203],
+    };
+    box.innerHTML = contOrder.map((cid) => {
+      const rgb = contColors[cid] || fallbackCont[cid];
+      return `<span class="lg-item"><i class="swatch" style="background:${rgbCss(rgb)}"></i>${escapeHtml(contLabels[cid] || cid)}</span>`;
     }).join("") + `<span class="lg-item"><i class="swatch" style="background:${COLORS.unknown}"></i>inconnu</span>`;
   }
 
